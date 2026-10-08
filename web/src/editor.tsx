@@ -5,6 +5,7 @@ import { sql } from "@codemirror/lang-sql";
 import { defaultKeymap } from "@codemirror/commands";
 import type { ClientConfig } from "./api";
 import { formatSQL } from "./format";
+import { rowsToCSV, saveCSV } from "./csv";
 
 type Result = {
   columns?: string[];
@@ -155,6 +156,14 @@ export function QueryEditor({
         </label>
         <button className="btn" type="button" onClick={() => void showHistory()}>
           History
+        </button>
+        <button
+          className="btn"
+          type="button"
+          disabled={!result?.columns}
+          onClick={() => void saveCSV("query.csv", rowsToCSV(result?.columns || [], result?.rows || []))}
+        >
+          Export CSV
         </button>
       </div>
       {history.length > 0 && (

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ClientConfig } from "./api";
+import { saveCSV } from "./csv";
 
 type Page = {
   sql: string;
@@ -51,6 +52,20 @@ export function DataGrid({ config, sessionId, target }: { config: ClientConfig; 
       })
       .catch((err: Error) => setError(err.message));
   }, [config, sessionId, target.database, target.schema, target.relation, pageSize, offset, filters, sort, visible]);
+
+  async function exportGrid() {
+    const res = await fetch(`${config.origin}/sessions/${sessionId}/export`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ database: target.database, schema: target.schema, relation: target.relation, columns: visible, filters, sort }),
+    });
+    if (!res.ok) {
+      setError(await res.text());
+      return;
+    }
+    if (res.headers.get("X-Truncated") === "1") setError("Export stopped at 100,000 rows.");
+    await saveCSV(`${target.relation}.csv`, await res.text());
+  }
 
   const start = page?.window.start || 0;
   const end = page?.window.end || 0;
@@ -126,6 +141,9 @@ export function DataGrid({ config, sessionId, target }: { config: ClientConfig; 
             <option value={500}>500</option>
           </select>
         </label>
+        <button className="btn" type="button" onClick={() => void exportGrid()}>
+          Export CSV
+        </button>
         <button className="btn" type="button" onClick={() => {
           api<{ count: number }>(config, `/sessions/${sessionId}/browse/count`, {
             method: "POST",

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -82,6 +82,11 @@ app.whenReady().then(async () => {
     const all = readSecrets();
     delete all[id];
     writeSecrets(all);
+  });
+  ipcMain.handle("save-file", async (_event, filename, contents) => {
+    const picked = await dialog.showSaveDialog({ defaultPath: filename });
+    if (picked.canceled || !picked.filePath) return;
+    fs.writeFileSync(picked.filePath, contents);
   });
   const win = new BrowserWindow({
     width: 1280,

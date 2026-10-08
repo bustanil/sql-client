@@ -46,6 +46,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /sessions/{id}/foreign-keys", s.foreignKeys)
 	s.mux.HandleFunc("POST /sessions/{id}/browse", s.browse)
 	s.mux.HandleFunc("POST /sessions/{id}/browse/count", s.browseCount)
+	s.mux.HandleFunc("POST /sessions/{id}/export", s.exportCSV)
 	s.mux.HandleFunc("POST /sessions/{id}/spawn", s.spawnSession)
 	s.mux.HandleFunc("POST /sessions/{id}/queries", s.runQuery)
 	s.mux.HandleFunc("POST /sessions/{id}/queries/{queryId}/cancel", s.cancelQuery)

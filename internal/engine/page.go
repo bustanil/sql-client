@@ -43,7 +43,7 @@ type PageRequest struct {
 }
 
 func PageQuery(ctx context.Context, db *sql.DB, req PageRequest) (Page, error) {
-	if req.Limit != 50 && req.Limit != 100 && req.Limit != 500 {
+	if req.Limit != 50 && req.Limit != 100 && req.Limit != 500 && req.Limit != 100000 {
 		req.Limit = 100
 	}
 	if req.Offset < 0 {

@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld("sqlc", {
     set: (id, password) => ipcRenderer.invoke("keychain:set", id, password),
     delete: (id) => ipcRenderer.invoke("keychain:delete", id),
   },
+  saveFile: (filename, contents) => ipcRenderer.invoke("save-file", filename, contents),
 });
