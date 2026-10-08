@@ -1,0 +1,2368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SQL Client — UI mock</title>
+  <style>
+    :root {
+      --bg: #f4f2ec;
+      --side: #ebe7df;
+      --paper: #fbfaf7;
+      --inset: #f6f4ee;
+      --line: #ddd6ca;
+      --line-strong: #cfc6b8;
+      --text: #1e1d1a;
+      --muted: #6e685f;
+      --faint: #918b82;
+      --ink: #1e1d1a;
+      --danger: #8f2d2a;
+      --ok: #1d6b43;
+      --select: #e4dece;
+      --hover: #e8e3d8;
+      --shadow: 0 16px 50px rgba(40, 32, 20, 0.18);
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      background: #d9d3c7;
+      color: var(--text);
+    }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: 0.45; }
+    kbd {
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 11px;
+      border: 1px solid var(--line-strong);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      padding: 0 4px;
+      background: var(--paper);
+    }
+
+    .review {
+      position: relative;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 12px;
+      background: #2c2924;
+      color: #f4f0e6;
+      flex: none;
+    }
+    .review-label {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: #c8bfb0;
+      margin-right: 4px;
+    }
+    .review button {
+      background: transparent;
+      color: #f4f0e6;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 3px 8px;
+      font-size: 12px;
+    }
+    .review button[aria-pressed="true"] {
+      background: #f4f0e6;
+      color: #2c2924;
+    }
+    .review button:hover { border-color: #8a8174; }
+
+    .window {
+      flex: 1;
+      min-height: 0;
+      margin: 16px;
+      display: flex;
+      flex-direction: column;
+      background: var(--paper);
+      border: 1px solid #c9c0b2;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .titlebar {
+      height: 38px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px;
+      background: var(--side);
+      border-bottom: 1px solid var(--line);
+      flex: none;
+    }
+    .lights { display: flex; gap: 6px; }
+    .lights i {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      display: block;
+      background: #d5cfc4;
+      border: 1px solid #c4bbae;
+    }
+    .title { font-size: 13px; font-weight: 600; }
+
+    .screen { flex: 1; min-height: 0; display: none; flex-direction: column; }
+    .screen.active { display: flex; }
+
+    .list-head, .toolbar, .status, .side-head, .obj-toolbar, .tabbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .list-head {
+      justify-content: space-between;
+      padding: 22px 28px 8px;
+    }
+    h1 { font-size: 22px; font-weight: 650; margin: 0; letter-spacing: -0.02em; }
+    h2 { font-size: 16px; margin: 0 0 4px; font-weight: 650; }
+    .sub { color: var(--muted); margin: 4px 0 0; }
+    .conn-list { padding: 8px 28px 28px; overflow: auto; }
+    .conn-row {
+      display: grid;
+      grid-template-columns: minmax(180px, 1.3fr) minmax(180px, 1.4fr) minmax(140px, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 12px 12px;
+      border-top: 1px solid var(--line);
+    }
+    .conn-row:hover { background: var(--inset); }
+    .conn-name { font-weight: 600; }
+    .meta { color: var(--muted); font-size: 12px; }
+    .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .badge {
+      font-size: 11px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 1px 7px;
+      color: var(--muted);
+      background: var(--paper);
+    }
+    .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+    .empty-note { padding: 28px; color: var(--muted); }
+
+    .btn {
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 6px;
+      border: 1px solid var(--line-strong);
+      background: var(--paper);
+    }
+    .btn:hover:not(:disabled) { background: var(--hover); }
+    .btn-primary { background: var(--ink); color: #fbfaf7; border-color: var(--ink); }
+    .btn-primary:hover:not(:disabled) { background: #3a3833; }
+    .btn-primary kbd {
+      background: transparent;
+      color: inherit;
+      border-color: rgba(251, 250, 247, 0.45);
+    }
+    .btn-danger { background: var(--danger); color: white; border-color: var(--danger); }
+    .btn-danger:hover:not(:disabled) { background: #7a2421; }
+    .btn-quiet { border-color: transparent; background: transparent; }
+    .btn-quiet:hover:not(:disabled) { background: var(--hover); }
+    .icon-btn { width: 28px; padding: 0; }
+
+    .workspace { flex: 1; min-height: 0; display: flex; }
+    .sidebar {
+      width: 300px;
+      flex: none;
+      background: var(--side);
+      border-right: 1px solid var(--line);
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+    .side-head { justify-content: space-between; padding: 10px 10px 6px; align-items: flex-start; }
+    .side-title { font-weight: 650; }
+    .tree-tools { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; }
+    .tree-tools input[type="search"], .field input, .field select, .field textarea, .toolbar input, .toolbar select {
+      width: 100%;
+      height: 30px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--paper);
+      padding: 0 8px;
+    }
+    .check { display: flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12px; }
+    #tree { overflow: auto; flex: 1; padding: 2px 4px 8px; }
+    .tree-row {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      border-radius: 4px;
+      min-height: 24px;
+      padding: 1px 6px;
+      color: var(--text);
+    }
+    .tree-row:hover { background: var(--hover); }
+    .tree-row[aria-selected="true"] { background: var(--select); }
+    .tree-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tree-meta { color: var(--faint); font-size: 11px; font-family: ui-monospace, "SF Mono", monospace; flex: none; }
+    .obj-icon { width: 14px; height: 14px; flex: none; display: grid; place-items: center; color: #6d6558; }
+    .tree-row[aria-selected="true"] .obj-icon { color: var(--text); }
+    .obj-icon svg { display: block; }
+    .chevron { width: 14px; height: 14px; flex: none; display: grid; place-items: center; }
+    .chevron.has::before {
+      content: "";
+      width: 5px;
+      height: 5px;
+      border-right: 1.5px solid var(--muted);
+      border-bottom: 1.5px solid var(--muted);
+      transform: rotate(-45deg);
+      margin-top: -2px;
+    }
+    .chevron.open::before { transform: rotate(45deg); margin-top: -4px; }
+    .obj-toolbar {
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      border-bottom: 1px solid var(--line);
+      background: var(--inset);
+      min-height: 40px;
+    }
+    .obj-kicker {
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .obj-target { font-weight: 650; margin-right: 6px; }
+    .danger-text { color: var(--danger); }
+    .menu {
+      position: fixed;
+      z-index: 50;
+      min-width: 196px;
+      background: var(--paper);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 4px;
+      box-shadow: var(--shadow);
+    }
+    .menu[hidden] { display: none; }
+    .menu button {
+      display: flex;
+      width: 100%;
+      align-items: center;
+      text-align: left;
+      border: 0;
+      background: transparent;
+      border-radius: 4px;
+      height: 28px;
+      padding: 0 8px;
+    }
+    .menu button:hover { background: var(--hover); }
+    .menu button.danger { color: var(--danger); }
+    .menu-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+
+    .main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+    .tabbar {
+      height: 38px;
+      padding: 0 8px;
+      border-bottom: 1px solid var(--line);
+      background: var(--inset);
+      gap: 4px;
+      flex: none;
+    }
+    .tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 28px;
+      padding: 0 8px;
+      border-radius: 6px;
+      border: 1px solid transparent;
+      background: transparent;
+    }
+    .tab[aria-selected="true"] { background: var(--paper); border-color: var(--line); }
+    .tab-close { border: 0; background: transparent; color: var(--muted); padding: 0 2px; }
+    .pane { display: none; flex: 1; min-height: 0; flex-direction: column; }
+    .pane.active { display: flex; }
+    .toolbar {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--line);
+      flex-wrap: wrap;
+      background: var(--paper);
+      flex: none;
+    }
+    .toolbar input, .toolbar select { width: auto; }
+    .spacer { flex: 1; }
+    .editor-wrap { display: flex; min-height: 180px; height: 42%; border-bottom: 1px solid var(--line); background: var(--paper); }
+    .editor-stack { position: relative; flex: 1; min-width: 0; min-height: 0; }
+    .editor-stack pre.code, .editor-stack textarea.code {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      white-space: pre;
+      overflow: auto;
+      tab-size: 2;
+    }
+    #sql-hl { z-index: 0; pointer-events: none; overflow: hidden; color: var(--text); }
+    #sql { z-index: 1; color: transparent; caret-color: var(--text); background: transparent; }
+    #sql::selection { background: #e4d3a4; color: transparent; }
+    .kw { color: #1d4e89; font-weight: 650; }
+    .str { color: #1d6b43; }
+    .num { color: #8a4b12; }
+    .cmt { color: #918b82; font-style: italic; }
+    .gutter {
+      width: 42px;
+      padding: 10px 0;
+      text-align: right;
+      color: var(--faint);
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      background: var(--inset);
+      user-select: none;
+      overflow: hidden;
+      white-space: pre;
+    }
+    textarea.code, pre.code {
+      flex: 1;
+      margin: 0;
+      border: 0;
+      resize: none;
+      padding: 10px 12px;
+      background: var(--paper);
+      font-family: ui-monospace, "SF Mono", monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+      min-width: 0;
+    }
+    pre.code { overflow: auto; white-space: pre-wrap; }
+    .results { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .result-meta { padding: 6px 10px; color: var(--muted); font-size: 12px; flex: none; }
+    .grid-scroll { flex: 1; min-height: 0; overflow: auto; }
+    table.grid { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    table.grid th, table.grid td {
+      border-bottom: 1px solid var(--line);
+      padding: 5px 10px;
+      text-align: left;
+      white-space: nowrap;
+      font-size: 12.5px;
+    }
+    table.grid th {
+      position: sticky;
+      top: 0;
+      background: var(--inset);
+      font-weight: 600;
+      z-index: 1;
+    }
+    table.grid th.sortable { cursor: pointer; }
+    table.grid td.num, table.grid th.num { text-align: right; font-family: ui-monospace, "SF Mono", monospace; }
+    table.grid td.nil { color: var(--faint); font-style: italic; }
+    .error-box { margin: 12px; padding: 12px 14px; border: 1px solid #e4c8c4; background: #fbf4f2; border-radius: 8px; }
+    .error-box strong { color: var(--danger); }
+    .confirm-box { margin: 12px; padding: 12px 14px; border: 1px solid var(--line-strong); background: var(--inset); border-radius: 8px; display: flex; gap: 10px; align-items: center; }
+    .status {
+      height: 30px;
+      padding: 0 10px;
+      border-top: 1px solid var(--line);
+      background: var(--side);
+      color: var(--muted);
+      font-size: 12px;
+      flex: none;
+      gap: 6px;
+    }
+    .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); display: inline-block; }
+    .status.running .dot { background: #a56b12; }
+    .status.bad .dot { background: var(--danger); }
+
+    .statement {
+      border-top: 1px solid var(--line);
+      background: var(--inset);
+      flex: none;
+    }
+    .statement summary { cursor: pointer; padding: 6px 10px; color: var(--muted); font-size: 12px; }
+    .statement pre { margin: 0; padding: 0 12px 10px; font-family: ui-monospace, "SF Mono", monospace; font-size: 12px; white-space: pre-wrap; }
+    .hint { color: var(--faint); font-size: 12px; padding: 0 12px 8px; }
+
+    .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      padding: 2px 8px;
+      background: var(--paper);
+      font-size: 12px;
+    }
+    .chip button { border: 0; background: transparent; color: var(--muted); padding: 0; }
+    .popover {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      z-index: 5;
+      background: var(--paper);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      padding: 8px;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 180px;
+    }
+    .popover[hidden] { display: none; }
+    .pop-anchor { position: relative; }
+
+    .ddl { padding: 14px 16px 16px; overflow: auto; gap: 12px; }
+    .ddl-head { display: flex; gap: 12px; }
+    .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); min-width: 0; }
+    .field.grow { flex: 1; }
+    .cols { width: 100%; border-collapse: collapse; }
+    .cols th { text-align: left; font-size: 11px; color: var(--muted); font-weight: 600; padding: 0 6px 4px; }
+    .cols td { padding: 3px; vertical-align: middle; }
+    .cols input, .cols select { width: 100%; height: 30px; border: 1px solid var(--line-strong); border-radius: 6px; background: white; padding: 0 6px; }
+    .size-pair { display: flex; gap: 4px; }
+    .size-pair input { width: 64px; }
+    #pane-ddl > .field:has(.ddl-sql) { flex: 1; min-height: 180px; }
+    .ddl-sql { flex: 1; min-height: 160px; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; display: flex; background: var(--inset); }
+    #ddl-sql { height: 100%; width: 100%; }
+    .form-actions { display: flex; gap: 8px; align-items: center; }
+    .banner { color: var(--ok); font-size: 12px; }
+
+    .scrim {
+      position: fixed;
+      inset: 0;
+      background: rgba(40, 32, 20, 0.28);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 30;
+      padding: 24px;
+    }
+    .scrim[hidden] { display: none; }
+    .sheet {
+      width: min(640px, 100%);
+      background: var(--paper);
+      border-radius: 12px;
+      border: 1px solid var(--line-strong);
+      box-shadow: var(--shadow);
+      padding: 18px 18px 16px;
+    }
+    .sheet.narrow { width: min(440px, 100%); }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; margin: 14px 0; }
+    .fields .span-2 { grid-column: span 2; }
+    .help { color: var(--faint); font-size: 12px; margin: 0; }
+    .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; align-items: center; }
+    .test-line { min-height: 18px; font-size: 12px; color: var(--ok); margin: 8px 0 12px; }
+    .test-line.bad { color: var(--danger); }
+    .history {
+      left: auto;
+      right: 0;
+      width: 320px;
+      max-height: 280px;
+      overflow: auto;
+    }
+    .history button.item {
+      text-align: left;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      background: transparent;
+      padding: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .history button.item:hover { background: var(--hover); }
+    .mono { font-family: ui-monospace, "SF Mono", monospace; font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  </style>
+</head>
+<body>
+  <header class="review">
+    <span class="review-label">UI mock</span>
+    <button type="button" data-jump="connections">Connections</button>
+    <button type="button" data-jump="new">New connection</button>
+    <button type="button" data-jump="query">Query</button>
+    <button type="button" data-jump="error">Query error</button>
+    <button type="button" data-jump="data">Data</button>
+    <button type="button" data-jump="ddl">Create table</button>
+    <button type="button" data-jump="drop">Drop table</button>
+    <button type="button" data-jump="mysql">MySQL</button>
+    <button type="button" data-jump="readonly">Read-only</button>
+  </header>
+
+  <div class="window">
+    <div class="titlebar">
+      <span class="lights" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span class="title">SQL Client</span>
+    </div>
+
+    <section class="screen active" id="screen-connections">
+      <div class="list-head">
+        <div>
+          <h1>Connections</h1>
+          <p class="sub">Saved on this Mac. Passwords stay in the keychain.</p>
+        </div>
+        <button class="btn btn-primary" type="button" id="new-connection">New connection</button>
+      </div>
+      <div class="conn-list" id="conn-list"></div>
+    </section>
+
+    <section class="screen" id="screen-workspace">
+      <div class="workspace">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div>
+              <div class="side-title" id="side-name">Local Postgres</div>
+              <div class="meta" id="side-engine">PostgreSQL</div>
+            </div>
+            <button class="btn btn-quiet" type="button" id="disconnect">Disconnect</button>
+          </div>
+          <div class="tree-tools">
+            <input id="tree-filter" type="search" placeholder="Filter loaded names" aria-label="Filter loaded names">
+            <label class="check"><input id="show-system" type="checkbox"> Show system schemas</label>
+          </div>
+          <div id="tree"></div>
+        </aside>
+        <section class="main">
+          <div class="obj-toolbar" id="obj-toolbar"></div>
+          <div class="tabbar" id="tabbar"></div>
+          <div class="pane" id="pane-query">
+            <div class="toolbar">
+              <button class="btn btn-primary" type="button" id="run">Run <kbd>⌘</kbd><kbd>Enter</kbd></button>
+              <button class="btn" type="button" id="format">Format</button>
+              <button class="btn" type="button" id="cancel" disabled>Cancel</button>
+              <label class="meta">Timeout
+                <select id="timeout" aria-label="Statement timeout">
+                  <option>15 seconds</option>
+                  <option selected>30 seconds</option>
+                  <option>60 seconds</option>
+                  <option>5 minutes</option>
+                  <option>No timeout</option>
+                </select>
+              </label>
+              <label class="meta">Database
+                <select id="db-select" aria-label="Current database"></select>
+              </label>
+              <span class="spacer"></span>
+              <div class="pop-anchor">
+                <button class="btn" type="button" id="history-btn" aria-expanded="false">History</button>
+                <div class="popover history" id="history" hidden></div>
+              </div>
+            </div>
+            <div class="editor-wrap">
+              <div class="gutter" id="gutter" aria-hidden="true">1</div>
+              <div class="editor-stack">
+                <pre class="code" id="sql-hl" aria-hidden="true"></pre>
+                <textarea class="code" id="sql" spellcheck="false" aria-label="SQL editor"></textarea>
+              </div>
+            </div>
+            <div class="results" id="query-results"></div>
+          </div>
+          <div class="pane" id="pane-data">
+            <div class="toolbar">
+              <div class="pop-anchor">
+                <button class="btn" type="button" id="columns-btn" aria-expanded="false">Columns</button>
+                <div class="popover" id="column-popover" hidden></div>
+              </div>
+              <div class="chips" id="filter-chips"></div>
+              <select id="filter-col" aria-label="Filter column"></select>
+              <select id="filter-op" aria-label="Filter operator">
+                <option value="eq">equals</option>
+                <option value="neq">not equals</option>
+                <option value="contains" selected>contains</option>
+                <option value="gt">greater than</option>
+                <option value="lt">less than</option>
+                <option value="empty">is empty</option>
+                <option value="notempty">is not empty</option>
+              </select>
+              <input id="filter-value" aria-label="Filter value" placeholder="Value" size="16">
+              <button class="btn" type="button" id="filter-apply">Apply</button>
+              <button class="btn btn-quiet" type="button" id="filter-clear">Clear</button>
+              <span class="spacer"></span>
+              <label class="meta">Rows
+                <select id="page-size" aria-label="Page size">
+                  <option>50</option>
+                  <option selected>100</option>
+                  <option>500</option>
+                </select>
+              </label>
+              <button class="btn" type="button" id="count-btn">Count</button>
+              <span class="meta" id="count-out"></span>
+              <span class="meta" id="page-label"></span>
+              <button class="btn" type="button" id="page-prev">Previous</button>
+              <button class="btn" type="button" id="page-next">Next</button>
+            </div>
+            <div class="grid-scroll" id="data-grid"></div>
+            <details class="statement" open>
+              <summary>Statement</summary>
+              <pre id="data-sql"></pre>
+              <div class="hint">Filter values are parameters. This statement is read-only.</div>
+            </details>
+          </div>
+          <div class="pane ddl" id="pane-ddl">
+            <div class="ddl-head">
+              <label class="field" id="schema-field">Schema
+                <select id="ddl-schema"></select>
+              </label>
+              <label class="field grow">Table name
+                <input id="ddl-table" value="invoices">
+              </label>
+            </div>
+            <table class="cols">
+              <thead>
+                <tr>
+                  <th>Name</th><th>Type</th><th>Size</th><th>Default</th><th>Null</th><th>PK</th><th></th>
+                </tr>
+              </thead>
+              <tbody id="ddl-columns"></tbody>
+            </table>
+            <div><button class="btn" type="button" id="add-col">Add column</button></div>
+            <label class="field">Statement
+              <div class="ddl-sql"><textarea class="code" id="ddl-sql" spellcheck="false" aria-label="Generated SQL"></textarea></div>
+            </label>
+            <p class="help">Run executes this statement, including any edits. Changing the form replaces the statement until you edit it.</p>
+            <div class="form-actions">
+              <span class="banner" id="ddl-msg"></span>
+              <span class="spacer"></span>
+              <button class="btn btn-quiet" type="button" id="ddl-reset" hidden>Reset from form</button>
+              <button class="btn" type="button" id="ddl-cancel">Cancel</button>
+              <button class="btn btn-primary" type="button" id="ddl-run">Run</button>
+            </div>
+          </div>
+          <div class="pane" id="pane-def">
+            <div class="toolbar"><span class="meta" id="def-caption">Definition</span></div>
+            <pre class="code" id="def-sql"></pre>
+          </div>
+          <footer class="status" id="status"><span class="dot"></span><span id="status-text"></span></footer>
+        </section>
+      </div>
+    </section>
+  </div>
+
+  <div class="menu" id="menu" role="menu" hidden></div>
+
+  <div class="scrim" id="sheet-connection" hidden>
+    <form class="sheet" id="conn-form">
+      <h2 id="conn-title">New connection</h2>
+      <p class="help" id="conn-help">The password is stored in the OS keychain, not in the connection file.</p>
+      <div class="fields">
+        <label class="field">Name <input id="f-name" required></label>
+        <label class="field">Engine
+          <select id="f-engine"><option>PostgreSQL</option><option>MySQL</option></select>
+        </label>
+        <label class="field">Host <input id="f-host" required value="localhost"></label>
+        <label class="field">Port <input id="f-port" required value="5432" inputmode="numeric"></label>
+        <label class="field">Username <input id="f-user" required></label>
+        <label class="field">Password <input id="f-password" type="password" autocomplete="off"></label>
+        <label class="field">Database <input id="f-database" placeholder="Optional"></label>
+        <label class="field">TLS
+          <select id="f-tls"><option>Off</option><option>Require</option><option>Verify</option></select>
+        </label>
+        <label class="check span-2"><input id="f-readonly" type="checkbox"> Read-only connection</label>
+      </div>
+      <p class="help">Require encrypts without checking the certificate. Verify checks it. Default ports are 5432 and 3306.</p>
+      <p class="test-line" id="test-line"></p>
+      <div class="sheet-actions">
+        <button class="btn" type="button" id="test-btn">Test connection</button>
+        <span class="spacer"></span>
+        <button class="btn" type="button" id="conn-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="scrim" id="sheet-delete" hidden>
+    <div class="sheet narrow">
+      <h2>Delete connection</h2>
+      <p id="delete-copy"></p>
+      <div class="sheet-actions">
+        <button class="btn" type="button" id="delete-cancel">Cancel</button>
+        <button class="btn btn-danger" type="button" id="delete-confirm">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="sheet-drop" hidden>
+    <div class="sheet narrow">
+      <h2 id="drop-title">Drop table</h2>
+      <p>Type <strong id="drop-expected">users</strong> to confirm. Nothing runs until the names match.</p>
+      <label class="field">Object name <input id="drop-input" autocomplete="off"></label>
+      <div class="sheet-actions" style="margin-top:14px">
+        <button class="btn" type="button" id="drop-cancel">Cancel</button>
+        <button class="btn btn-danger" type="button" id="drop-confirm" disabled>Drop</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="sheet-createdb" hidden>
+    <div class="sheet">
+      <h2>Create database</h2>
+      <label class="field">Name <input id="cdb-name" value="billing"></label>
+      <p class="help" id="cdb-help"></p>
+      <label class="field">Statement
+        <textarea class="code" id="cdb-sql" spellcheck="false" style="height:88px;border:1px solid var(--line);border-radius:8px"></textarea>
+      </label>
+      <div class="sheet-actions">
+        <button class="btn" type="button" id="cdb-cancel">Cancel</button>
+        <button class="btn btn-primary" type="button" id="cdb-run">Run</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="scrim" id="sheet-addcol" hidden>
+    <form class="sheet" id="addcol-form">
+      <h2 id="addcol-title">Add column</h2>
+      <div class="fields">
+        <label class="field">Name <input id="ac-name" value="nickname"></label>
+        <label class="field">Type <select id="ac-type"></select></label>
+        <label class="field">Default <input id="ac-default" placeholder="Optional, inserted verbatim"></label>
+        <label class="check"><input id="ac-null" type="checkbox" checked> Nullable</label>
+      </div>
+      <label class="field">Statement
+        <textarea class="code" id="ac-sql" spellcheck="false" style="height:72px;border:1px solid var(--line);border-radius:8px"></textarea>
+      </label>
+      <div class="sheet-actions">
+        <button class="btn" type="button" id="ac-cancel">Cancel</button>
+        <button class="btn btn-primary" type="submit">Run</button>
+      </div>
+    </form>
+  </div>
+
+  <script>
+    const PG_TYPES = [
+      ["smallint", "smallint"],
+      ["integer", "integer"],
+      ["bigint", "bigint"],
+      ["int identity", "integer GENERATED ALWAYS AS IDENTITY"],
+      ["bigint identity", "bigint GENERATED ALWAYS AS IDENTITY"],
+      ["numeric", "numeric"],
+      ["text", "text"],
+      ["varchar", "varchar"],
+      ["boolean", "boolean"],
+      ["date", "date"],
+      ["timestamp", "timestamp"],
+      ["timestamptz", "timestamptz"],
+      ["uuid", "uuid"],
+      ["json", "json"],
+      ["jsonb", "jsonb"],
+      ["other", "Other"]
+    ];
+    const MY_TYPES = [
+      ["smallint", "smallint"],
+      ["int", "int"],
+      ["bigint", "bigint"],
+      ["int auto", "int AUTO_INCREMENT"],
+      ["bigint auto", "bigint AUTO_INCREMENT"],
+      ["decimal", "decimal"],
+      ["varchar", "varchar"],
+      ["text", "text"],
+      ["boolean", "boolean"],
+      ["date", "date"],
+      ["datetime", "datetime"],
+      ["timestamp", "timestamp"],
+      ["json", "json"],
+      ["other", "Other"]
+    ];
+
+    const firstNames = ["Ada", "Grace", "Alan", "Edsger", "Barbara", "Donald", "Margaret", "Katherine", "Tim", "Leslie", "Radia", "Fran", "John", "Mary", "Ken", "Adele"];
+    const lastNames = ["Lovelace", "Hopper", "Turing", "Dijkstra", "Liskov", "Knuth", "Hamilton", "Johnson", "Berners-Lee", "Lamport", "Perlman", "Allen", "Backus", "Shaw", "Thompson", "Goldberg"];
+
+    function people(n) {
+      const rows = [];
+      for (let i = 0; i < n; i++) {
+        const f = firstNames[i % firstNames.length];
+        const l = lastNames[(i * 3) % lastNames.length];
+        const created = new Date(Date.UTC(2026, 9, 7, 12, 0, 0) - i * 3600 * 1000);
+        rows.push({
+          id: 1200 - i,
+          email: `${f}.${l}${i}@example.com`.toLowerCase(),
+          name: i % 9 === 0 ? null : `${f} ${l}`,
+          created_at: created.toISOString().replace("T", " ").replace(".000Z", "+00")
+        });
+      }
+      return rows;
+    }
+
+    function col(name, type, extra = {}) {
+      return { name, type, nullable: false, pk: false, def: "", ...extra };
+    }
+
+    const USER_COLS = [
+      col("id", "integer", { pk: true, num: true }),
+      col("email", "text"),
+      col("name", "text", { nullable: true }),
+      col("created_at", "timestamptz", { def: "now()" })
+    ];
+
+    function table(columns, rows) {
+      return { columns: columns.map((c) => ({ ...c })), rows };
+    }
+
+    const models = {
+      pg: {
+        databases: [
+          {
+            name: "app_dev",
+            schemas: [
+              {
+                name: "public",
+                tables: {
+                  users: table(USER_COLS, people(120)),
+                  orders: table([
+                    col("id", "integer", { pk: true, num: true }),
+                    col("user_id", "integer", { num: true }),
+                    col("total", "numeric", { num: true }),
+                    col("status", "text")
+                  ], [
+                    { id: 88, user_id: 1200, total: "128.50", status: "paid" },
+                    { id: 87, user_id: 1198, total: "42.00", status: "open" },
+                    { id: 86, user_id: 1194, total: "15.25", status: "shipped" },
+                    { id: 85, user_id: 1191, total: "640.00", status: "paid" },
+                    { id: 84, user_id: 1188, total: "9.99", status: null }
+                  ]),
+                  products: table([
+                    col("id", "integer", { pk: true, num: true }),
+                    col("sku", "text"),
+                    col("title", "text"),
+                    col("price", "numeric", { num: true })
+                  ], [
+                    { id: 1, sku: "NB-01", title: "Field notes", price: "12.00" },
+                    { id: 2, sku: "LP-14", title: "Desk lamp", price: "48.00" },
+                    { id: 3, sku: "CB-2", title: "Charging brick", price: "29.00" }
+                  ])
+                },
+                views: {
+                  active_users: "select id, email, name\nfrom users\nwhere name is not null"
+                }
+              }
+            ]
+          },
+          { name: "postgres", schemas: [{ name: "public", tables: {}, views: {} }] }
+        ]
+      },
+      my: {
+        databases: [
+          {
+            name: "shop",
+            tables: {
+              customers: table(USER_COLS.map((c) => ({ ...c, type: c.name === "created_at" ? "datetime" : c.type === "integer" ? "int" : c.type })), people(120)),
+              orders: table([
+                col("id", "int", { pk: true, num: true }),
+                col("customer_id", "int", { num: true }),
+                col("total", "decimal", { num: true }),
+                col("status", "varchar")
+              ], [
+                { id: 501, customer_id: 1200, total: "88.00", status: "paid" },
+                { id: 500, customer_id: 1199, total: "12.40", status: null }
+              ])
+            },
+            views: { open_orders: "select id, customer_id, total\nfrom orders\nwhere status = 'open'" }
+          }
+        ]
+      },
+      ro: {
+        databases: [
+          {
+            name: "analytics",
+            schemas: [
+              {
+                name: "public",
+                tables: {
+                  events: table([
+                    col("id", "bigint", { pk: true, num: true }),
+                    col("name", "text"),
+                    col("at", "timestamptz")
+                  ], [
+                    { id: 3, name: "app.opened", at: "2026-10-07 12:01:00+00" },
+                    { id: 2, name: "query.ran", at: "2026-10-07 12:04:11+00" }
+                  ]),
+                  page_views: table([
+                    col("id", "bigint", { pk: true, num: true }),
+                    col("path", "text"),
+                    col("views", "integer", { num: true })
+                  ], [
+                    { id: 1, path: "/home", views: 420 },
+                    { id: 2, path: "/pricing", views: 90 }
+                  ])
+                },
+                views: {}
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    let connections = [
+      { id: "pg", name: "Local Postgres", engine: "PostgreSQL", host: "localhost", port: "5432", user: "app", database: "app_dev", tls: "Off", readOnly: false },
+      { id: "my", name: "Staging MySQL", engine: "MySQL", host: "10.0.0.14", port: "3306", user: "shop", database: "shop", tls: "Require", readOnly: false },
+      { id: "ro", name: "Analytics", engine: "PostgreSQL", host: "analytics.internal", port: "5432", user: "reader", database: "analytics", tls: "Verify", readOnly: true }
+    ];
+
+    const state = {
+      jump: "connections",
+      screen: "connections",
+      editingId: null,
+      portTouched: false,
+      deleteId: null,
+      conn: null,
+      showSystem: false,
+      treeFilter: "",
+      expanded: new Set(),
+      selected: null,
+      tabs: [],
+      active: null,
+      running: false,
+      timer: null,
+      history: [
+        { sql: "select count(*) from users", ok: true, detail: "1 row · 6 ms", at: "07:41" },
+        { sql: "update users set name = name", ok: false, detail: "permission denied", at: "07:12" }
+      ],
+      historyOpen: false,
+      columnsOpen: false,
+      filters: [],
+      sort: null,
+      page: 0,
+      pageSize: 100,
+      count: null,
+      visible: null,
+      queryText: {},
+      gridTable: null,
+      gridSchema: null,
+      gridDb: null,
+      ddl: null,
+      drop: null,
+      addCol: null
+    };
+
+    const $ = (id) => document.getElementById(id);
+    function esc(s) {
+      return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    }
+    function qid(engine, name) {
+      return engine === "MySQL" ? "`" + String(name).replace(/`/g, "``") + "`" : '"' + String(name).replace(/"/g, '""') + '"';
+    }
+    function typesFor(engine) { return engine === "MySQL" ? MY_TYPES : PG_TYPES; }
+    function isIdentity(type) { return String(type).includes("identity") || String(type).includes("auto"); }
+
+    function setJump(id) {
+      state.jump = id;
+      document.querySelectorAll("[data-jump]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.jump === id)));
+    }
+
+    function showScreen(name) {
+      state.screen = name;
+      $("screen-connections").classList.toggle("active", name === "connections");
+      $("screen-workspace").classList.toggle("active", name === "workspace");
+      $("screen-connections").hidden = name !== "connections";
+      $("screen-workspace").hidden = name !== "workspace";
+    }
+
+    function closeModals() {
+      ["sheet-connection", "sheet-delete", "sheet-drop", "sheet-createdb", "sheet-addcol"].forEach((id) => { $(id).hidden = true; });
+    }
+
+    function renderConnections() {
+      const host = $("conn-list");
+      if (!connections.length) {
+        host.innerHTML = '<div class="empty-note">No saved connections.</div>';
+        return;
+      }
+      host.innerHTML = connections.map((c) => `
+        <div class="conn-row">
+          <div class="conn-name">${esc(c.name)}</div>
+          <div>
+            <div>${esc(c.user)}@${esc(c.host)}:${esc(c.port)}</div>
+            <div class="meta">${esc(c.database || "No default database")}</div>
+          </div>
+          <div class="badges">
+            <span class="badge">${esc(c.engine)}</span>
+            <span class="badge">TLS ${esc(c.tls)}</span>
+            ${c.readOnly ? '<span class="badge">Read-only</span>' : ""}
+          </div>
+          <div class="row-actions">
+            <button class="btn btn-quiet" type="button" data-act="edit" data-id="${esc(c.id)}">Edit</button>
+            <button class="btn btn-quiet" type="button" data-act="dup" data-id="${esc(c.id)}">Duplicate</button>
+            <button class="btn btn-quiet" type="button" data-act="del" data-id="${esc(c.id)}">Delete</button>
+            <button class="btn btn-primary" type="button" data-act="connect" data-id="${esc(c.id)}">Connect</button>
+          </div>
+        </div>`).join("");
+    }
+
+    function defaultExpanded(conn) {
+      const set = new Set(["conn"]);
+      const model = models[conn.id];
+      if (!model) return set;
+      model.databases.forEach((db) => {
+        set.add("db:" + db.name);
+        (db.schemas || []).forEach((schema) => {
+          set.add(`sc:${db.name}.${schema.name}`);
+          set.add(`folder:${db.name}.${schema.name}.tables`);
+          set.add(`folder:${db.name}.${schema.name}.views`);
+        });
+        if (db.tables) {
+          set.add(`folder:${db.name}.tables`);
+          set.add(`folder:${db.name}.views`);
+        }
+      });
+      const usersKey = conn.engine === "MySQL" ? "table:shop.customers" : "table:app_dev.public.users";
+      if (conn.id !== "ro") set.add(usersKey);
+      return set;
+    }
+
+    function nodeList() {
+      const conn = state.conn;
+      const model = models[conn.id] || { databases: [] };
+      const nodes = [];
+      const push = (node) => nodes.push(node);
+      model.databases.forEach((db) => {
+        const sysDb = ["mysql", "information_schema", "performance_schema", "sys"].includes(db.name);
+        if (sysDb && !state.showSystem) return;
+        push({ id: "db:" + db.name, depth: 0, kind: "database", label: db.name, db: db.name, current: db.name === conn.database, childKey: "db:" + db.name });
+        if (!state.expanded.has("db:" + db.name)) return;
+        if (conn.engine === "PostgreSQL") {
+          (db.schemas || []).forEach((schema) => {
+            const sys = schema.name === "pg_catalog" || schema.name === "information_schema";
+            if (sys && !state.showSystem) return;
+            const sid = `sc:${db.name}.${schema.name}`;
+            push({ id: sid, depth: 1, kind: "schema", label: schema.name, db: db.name, schema: schema.name, childKey: sid });
+            if (!state.expanded.has(sid)) return;
+            pushFolder(push, 2, db.name, schema.name, schema);
+          });
+        } else {
+          pushFolder(push, 1, db.name, null, db);
+        }
+      });
+      nodes.forEach((n) => { n.depth += 1; });
+      const rooted = [{ id: "conn", depth: 0, kind: "connection", label: conn.name, childKey: "conn" }];
+      if (state.expanded.has("conn") || state.treeFilter.trim()) rooted.push(...nodes);
+      return filterNodes(rooted);
+    }
+
+    function pushFolder(push, depth, db, schema, bag) {
+      const base = schema ? `${db}.${schema}` : db;
+      const tablesId = `folder:${base}.tables`;
+      push({ id: tablesId, depth, kind: "folder", label: "Tables", db, schema, folder: "tables", childKey: tablesId });
+      if (state.expanded.has(tablesId)) {
+        Object.entries(bag.tables || {}).forEach(([name, t]) => {
+          const id = `table:${base}.${name}`;
+          push({ id, depth: depth + 1, kind: "table", label: name, db, schema, table: name, childKey: id });
+          if (state.expanded.has(id)) {
+            t.columns.forEach((c) => {
+              const meta = [c.type, c.pk ? "PK" : "", c.nullable ? "null" : ""].filter(Boolean).join(" · ");
+              push({ id: `col:${base}.${name}.${c.name}`, depth: depth + 2, kind: "column", label: c.name, meta, db, schema, table: name, column: c.name });
+            });
+          }
+        });
+      }
+      const viewsId = `folder:${base}.views`;
+      push({ id: viewsId, depth, kind: "folder", label: "Views", db, schema, folder: "views", childKey: viewsId });
+      if (state.expanded.has(viewsId)) {
+        Object.keys(bag.views || {}).forEach((name) => {
+          push({ id: `view:${base}.${name}`, depth: depth + 1, kind: "view", label: name, db, schema, view: name });
+        });
+      }
+    }
+
+    function filterNodes(nodes) {
+      const q = state.treeFilter.trim().toLowerCase();
+      if (!q) return nodes;
+      const keep = new Set();
+      nodes.forEach((n, i) => {
+        if (n.label.toLowerCase().includes(q)) {
+          keep.add(i);
+          for (let d = n.depth - 1, j = i - 1; j >= 0 && d >= 0; j--) {
+            if (nodes[j].depth === d) { keep.add(j); d--; }
+          }
+        }
+      });
+      return nodes.filter((_, i) => keep.has(i));
+    }
+
+    const ICONS = {
+      connection: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+      database: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><ellipse cx="8" cy="4" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+      schema: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4.5h4l1 1.5h7v7H2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+      folder: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h4l1 1.5h7v8H2z" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>',
+      table: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M2 6.5h12M6.5 6.5V13" stroke="currentColor" stroke-width="1.3"/></svg>',
+      view: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 8s2.5-4 6.5-4 6.5 4 6.5 4-2.5 4-6.5 4S1.5 8 1.5 8z" fill="none" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+      column: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 3h8M4 8h8M4 13h5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+      key: '<svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7 8h7M12 8v2.2M14 8v1.6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
+    };
+
+    function renderTree() {
+      const conn = state.conn;
+      $("side-name").textContent = conn.name + (conn.readOnly ? " · Read-only" : "");
+      $("side-engine").textContent = conn.engine;
+      const nodes = nodeList();
+      $("tree").innerHTML = nodes.map((n) => {
+        const open = n.childKey && state.expanded.has(n.childKey);
+        const chev = n.childKey ? `<span class="chevron has${open ? " open" : ""}"></span>` : `<span class="chevron"></span>`;
+        const iconKind = n.kind === "column" && (n.meta || "").includes("PK") ? "key" : n.kind;
+        const current = n.current ? '<span class="tree-meta">current</span>' : "";
+        const meta = n.meta ? `<span class="tree-meta">${esc(n.meta)}</span>` : current;
+        return `<button type="button" class="tree-row" style="padding-left:${4 + n.depth * 14}px" data-node="${esc(n.id)}" aria-selected="${state.selected === n.id}">
+          ${chev}<span class="obj-icon">${ICONS[iconKind] || ""}</span><span class="tree-label">${esc(n.label)}</span>${meta}</button>`;
+      }).join("") || '<div class="empty-note">No objects match.</div>';
+      renderObjectToolbar(nodes);
+    }
+
+    function findNode(id) {
+      return nodeList().find((n) => n.id === id) || null;
+    }
+
+    function actionsFor(node) {
+      const ro = state.conn && state.conn.readOnly;
+      const items = [];
+      const add = (act, label, danger) => items.push({ act, label, danger: !!danger });
+      if (!node || node.kind === "connection") {
+        if (!ro) add("create-db", "Create database");
+        add("refresh", "Refresh");
+      } else if (node.kind === "database" || node.kind === "schema" || (node.kind === "folder" && node.folder === "tables")) {
+        if (!ro) add("create-table", "Create table");
+        add("refresh", "Refresh");
+        if (node.kind === "database" && !ro) add("drop-db", "Drop database", true);
+      } else if (node.kind === "table") {
+        add("open", "Open data");
+        add("def", "Show definition");
+        add("refresh", "Refresh");
+        if (!ro) add("add-col", "Add column");
+        if (!ro) add("drop", "Drop table", true);
+      } else if (node.kind === "view") {
+        add("open-view", "Open data");
+        add("def", "Show definition");
+        add("refresh", "Refresh");
+        if (!ro) add("drop", "Drop view", true);
+      } else if (node.kind === "column") {
+        if (!ro) add("drop-col", "Drop column", true);
+      } else {
+        add("refresh", "Refresh");
+      }
+      const dangerAt = items.findIndex((item) => item.danger);
+      if (dangerAt > 0) items.splice(dangerAt, 0, { sep: true });
+      return items;
+    }
+
+    function kindLabel(kind) {
+      return { connection: "Connection", database: "Database", schema: "Schema", folder: "Folder", table: "Table", view: "View", column: "Column" }[kind] || "Object";
+    }
+
+    function renderObjectToolbar(nodes) {
+      const n = nodes.find((x) => x.id === state.selected);
+      state.actions = actionsFor(n);
+      const label = n ? n.label : (state.conn ? state.conn.name : "");
+      const buttons = state.actions.filter((a) => !a.sep).map((a) =>
+        `<button class="btn${a.danger ? " danger-text" : ""}" type="button" data-tree-act="${a.act}">${esc(a.label)}</button>`
+      ).join("");
+      const empty = buttons ? "" : '<span class="meta">Nothing to change on this object.</span>';
+      $("obj-toolbar").innerHTML = `<span class="obj-kicker">${esc(n ? kindLabel(n.kind) : "Connection")}</span><span class="obj-target">${esc(label)}</span>${buttons}${empty}`;
+    }
+
+    function lookupBag(dbName, schemaName) {
+      const model = models[state.conn.id];
+      const db = model && model.databases.find((d) => d.name === dbName);
+      if (!db) return null;
+      if (state.conn.engine === "MySQL") return db;
+      return (db.schemas || []).find((s) => s.name === schemaName) || null;
+    }
+
+    function ensureTab(tab) {
+      if (!state.tabs.some((t) => t.id === tab.id)) state.tabs.push(tab);
+      state.active = tab.id;
+      renderTabs();
+    }
+
+    function renderTabs() {
+      const bar = $("tabbar");
+      const tabs = state.tabs.map((t) => `
+        <div class="tab" role="tab" aria-selected="${t.id === state.active}" data-tab="${esc(t.id)}">
+          <span>${esc(t.title)}</span>
+          <button class="tab-close" type="button" data-close="${esc(t.id)}" aria-label="Close ${esc(t.title)}">×</button>
+        </div>`).join("");
+      bar.innerHTML = tabs + '<span class="spacer"></span><button class="btn btn-quiet" type="button" id="new-query">New query</button>';
+      ["query", "data", "ddl", "def"].forEach((kind) => {
+        const pane = $("pane-" + kind);
+        const active = state.tabs.find((t) => t.id === state.active);
+        pane.classList.toggle("active", !!active && active.kind === kind);
+      });
+      if (!state.tabs.length) $("pane-query").classList.remove("active");
+    }
+
+    function status(text, mode) {
+      $("status-text").textContent = text;
+      $("status").className = "status" + (mode ? " " + mode : "");
+    }
+
+    function statusLine(extra) {
+      const c = state.conn;
+      const bits = [c.name, c.engine, c.database || "No database", c.readOnly ? "Read-only" : null, extra || "Idle"].filter(Boolean);
+      status(bits.join(" · "), extra === "Running" ? "running" : extra === "Canceled" ? "bad" : "");
+    }
+
+    function fillDatabases() {
+      const sel = $("db-select");
+      const model = models[state.conn.id] || { databases: [] };
+      const names = model.databases.map((d) => d.name).filter((n) => state.showSystem || !["mysql", "information_schema", "performance_schema", "sys"].includes(n));
+      if (!names.length && state.conn.database) names.push(state.conn.database);
+      sel.innerHTML = names.map((n) => `<option ${n === state.conn.database ? "selected" : ""}>${esc(n)}</option>`).join("");
+      sel.title = state.conn.engine === "PostgreSQL" ? "Switching database opens a new session" : "Runs USE on this session";
+    }
+
+    function connect(id) {
+      const conn = connections.find((c) => c.id === id);
+      if (!conn) return;
+      state.conn = { ...conn };
+      if (!models[conn.id]) {
+        models[conn.id] = conn.engine === "MySQL"
+          ? { databases: conn.database ? [{ name: conn.database, tables: {}, views: {} }] : [] }
+          : { databases: [{ name: conn.database || "postgres", schemas: [{ name: "public", tables: {}, views: {} }] }] };
+      }
+      state.expanded = defaultExpanded(conn);
+      state.selected = null;
+      state.treeFilter = "";
+      $("tree-filter").value = "";
+      $("show-system").checked = false;
+      state.showSystem = false;
+      state.tabs = [];
+      state.historyOpen = false;
+      showScreen("workspace");
+      fillDatabases();
+      renderTree();
+      openQuery(defaultSql(), { result: "rows" });
+      closeModals();
+    }
+
+    function defaultSql() {
+      const c = state.conn;
+      if (c.engine === "MySQL") {
+        return "select id, email, name, created_at\nfrom customers\nwhere created_at > now() - interval 7 day\norder by created_at desc;";
+      }
+      return "select id, email, name, created_at\nfrom public.users\nwhere created_at > now() - interval '7 days'\norder by created_at desc;";
+    }
+
+    function syncEditor() {
+      const text = $("sql").value;
+      const n = Math.max(text.split("\n").length, 1);
+      $("gutter").textContent = Array.from({ length: n }, (_, i) => i + 1).join("\n");
+      $("sql-hl").innerHTML = highlightSql(text);
+      $("sql-hl").scrollTop = $("sql").scrollTop;
+      $("sql-hl").scrollLeft = $("sql").scrollLeft;
+      $("gutter").scrollTop = $("sql").scrollTop;
+    }
+
+    function highlightSql(text) {
+      const re = /(--[^\n]*|'(?:''|[^'])*'|"(?:[^"]*)"|`(?:[^`]|``)*`|\b\d+(?:\.\d+)?\b|\b(?:select|from|where|and|or|order|by|group|limit|offset|as|join|on|insert|into|update|set|delete|create|table|drop|alter|primary|key|not|null|is|in|like|ilike|values|distinct|asc|desc|having|union|left|right|inner|outer|with|case|when|then|else|end|interval|now)\b)/gi;
+      let out = "";
+      let last = 0;
+      for (const match of text.matchAll(re)) {
+        out += esc(text.slice(last, match.index));
+        const token = match[0];
+        const cls = token.startsWith("--") ? "cmt"
+          : token.startsWith("'") || token.startsWith('"') || token.startsWith("`") ? "str"
+          : /^\d/.test(token) ? "num" : "kw";
+        out += `<span class="${cls}">${esc(token)}</span>`;
+        last = match.index + token.length;
+      }
+      out += esc(text.slice(last));
+      return out || " ";
+    }
+
+    function formatSql(input) {
+      const strings = [];
+      let src = input.replace(/'(?:''|[^'])*'/g, (m) => {
+        strings.push(m);
+        return "§" + (strings.length - 1) + "§";
+      });
+      src = src.replace(/\s+/g, " ").trim().replace(/;\s*$/, "");
+      const tokens = src.match(/§\d+§|\(|\)|,|[^\s(),]+/g) || [];
+      const keywords = new Set("select from where and or as on by asc desc not null is in like ilike insert into update set delete create table drop alter primary key distinct having union join left right inner outer with case when then else end interval group order limit offset values".split(" "));
+      const lines = [];
+      let line = [];
+      let depth = 0;
+      const joinLine = (parts) => parts.reduce((acc, t, i) => {
+        if (i === 0) return t;
+        if (t === "," || t === ")" || t === "(" || acc.endsWith("(")) return acc + t;
+        return acc + " " + t;
+      }, "");
+      const flush = () => { if (line.length) lines.push(joinLine(line)); line = []; };
+      for (let i = 0; i < tokens.length; i++) {
+        let token = tokens[i];
+        const low = token.toLowerCase();
+        const pair = low + " " + String(tokens[i + 1] || "").toLowerCase();
+        if (depth === 0 && ["order by", "group by", "union all", "inner join", "left join", "right join"].includes(pair)) {
+          flush();
+          line.push(pair.toUpperCase());
+          i += 1;
+          continue;
+        }
+        if (token.startsWith("§")) { line.push(token); continue; }
+        if (keywords.has(low)) token = low.toUpperCase();
+        if (token === "(") { depth += 1; line.push(token); continue; }
+        if (token === ")") { depth = Math.max(0, depth - 1); line.push(token); continue; }
+        if (token === "," && depth === 0) { line.push(","); flush(); continue; }
+        if (depth === 0 && line.length && /^(SELECT|FROM|WHERE|HAVING|LIMIT|OFFSET|VALUES|SET|JOIN|ON)$/.test(token)) flush();
+        line.push(token);
+      }
+      flush();
+      const clause = /^(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|LIMIT|OFFSET|UNION|JOIN|LEFT JOIN|RIGHT JOIN|INNER JOIN|ON|SET|VALUES)\b/;
+      let out = lines.map((row, i) => (i === 0 || clause.test(row) ? row : "  " + row)).join("\n");
+      strings.forEach((s, i) => { out = out.replace("§" + i + "§", s); });
+      return out + (input.trim().endsWith(";") ? ";" : "");
+    }
+
+    function rememberQuery() {
+      const tab = state.tabs.find((t) => t.id === state.active);
+      if (tab && tab.kind === "query") state.queryText[tab.id] = $("sql").value;
+    }
+
+    function showQuery(id) {
+      rememberQuery();
+      state.active = id;
+      const tab = state.tabs.find((t) => t.id === id);
+      if (tab && tab.kind === "query") {
+        $("sql").value = state.queryText[id] ?? "";
+        syncEditor();
+      }
+      renderTabs();
+    }
+
+    function openQuery(sql, opts = {}) {
+      ensureTab({ id: "query-1", kind: "query", title: "Query 1" });
+      state.queryText["query-1"] = sql;
+      state.active = "query-1";
+      $("sql").value = sql;
+      syncEditor();
+      renderTabs();
+      if (opts.result === "error") showQueryError();
+      else if (opts.result === "rows") showQueryRows("4 rows · 18 ms");
+      else $("query-results").innerHTML = "";
+      statusLine("Idle");
+    }
+
+    function showQueryRows(meta) {
+      const sql = $("sql").value;
+      const events = /\bevents\b/i.test(sql);
+      const headers = events
+        ? [["id", true], ["name", false], ["at", false]]
+        : [["id", true], ["email", false], ["name", false], ["created_at", false]];
+      const rows = events
+        ? [["3", "app.opened", "2026-10-07 12:01:00+00"], ["2", "query.ran", "2026-10-07 12:04:11+00"]]
+        : [
+          ["1200", "ada.lovelace0@example.com", "Ada Lovelace", "2026-10-07 12:00:00+00"],
+          ["1199", "leslie.hopper1@example.com", null, "2026-10-07 11:00:00+00"],
+          ["1198", "john.turing2@example.com", "John Turing", "2026-10-07 10:00:00+00"],
+          ["1197", "mary.dijkstra3@example.com", "Mary Dijkstra", "2026-10-07 09:00:00+00"]
+        ];
+      const shown = events ? "2 rows · 9 ms" : meta;
+      $("query-results").innerHTML = `<div class="result-meta">${esc(shown)}</div><div class="grid-scroll"><table class="grid"><thead><tr>${
+        headers.map(([name, num]) => `<th class="${num ? "num" : ""}">${esc(name)}</th>`).join("")
+      }</tr></thead><tbody>${
+        rows.map((r) => `<tr>${r.map((cell, i) => cell == null ? '<td class="nil">NULL</td>' : `<td class="${headers[i][1] ? "num" : ""}">${esc(cell)}</td>`).join("")}</tr>`).join("")
+      }</tbody></table></div>`;
+    }
+
+    function showQueryError() {
+      $("query-results").innerHTML = `<div class="error-box"><strong>ERROR</strong><div>column "emial" does not exist</div><div class="meta">Position 8</div></div>`;
+      const at = $("sql").value.indexOf("emial");
+      if (at >= 0) $("sql").setSelectionRange(at, at + 5);
+      statusLine("Idle");
+    }
+
+    function statementToRun() {
+      const el = $("sql");
+      const text = el.value;
+      if (el.selectionStart !== el.selectionEnd) return text.slice(el.selectionStart, el.selectionEnd).trim();
+      const pos = el.selectionStart;
+      const parts = [];
+      let start = 0;
+      let quote = null;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (quote) {
+          if (c === quote) quote = null;
+          continue;
+        }
+        if (c === "'" || c === '"') { quote = c; continue; }
+        if (c === ";") { parts.push(text.slice(start, i)); start = i + 1; }
+      }
+      parts.push(text.slice(start));
+      let cursor = 0;
+      for (const part of parts) {
+        const next = cursor + part.length + 1;
+        if (pos <= next) return part.trim();
+        cursor = next;
+      }
+      return parts[0].trim();
+    }
+
+    function looksRead(sql) {
+      const stripped = sql.replace(/^\s*(--.*)?$/gm, "").trim();
+      return /^(select|with|show|explain|values)\b/i.test(stripped);
+    }
+    function looksDestructive(sql) {
+      const stripped = sql.replace(/^\s*(--.*)?$/gm, "").trim();
+      return /^(drop|truncate|alter)\b/i.test(stripped);
+    }
+
+    function runEditor(confirmed) {
+      const sql = statementToRun();
+      if (!sql) return;
+      if (state.conn.readOnly && !looksRead(sql)) {
+        $("query-results").innerHTML = `<div class="error-box"><strong>Not sent</strong><div>Read-only connection. This statement was rejected before it reached the server.</div></div>`;
+        pushHistory(sql, false, "Rejected by read-only check");
+        statusLine("Idle");
+        return;
+      }
+      if (!confirmed && looksDestructive(sql)) {
+        $("query-results").innerHTML = `<div class="confirm-box"><div>This statement starts with a destructive verb. Run it on ${esc(state.conn.database || "the server")}?</div><button class="btn btn-danger" type="button" id="confirm-run">Run statement</button><button class="btn" type="button" id="confirm-cancel">Cancel</button></div>`;
+        return;
+      }
+      state.running = true;
+      $("cancel").disabled = false;
+      $("run").disabled = true;
+      statusLine("Running");
+      $("query-results").innerHTML = '<div class="result-meta">Running…</div>';
+      clearTimeout(state.timer);
+      state.timer = setTimeout(() => finishRun(sql), 350);
+    }
+
+    function finishRun(sql) {
+      state.running = false;
+      $("cancel").disabled = true;
+      $("run").disabled = false;
+      if (/emial/i.test(sql)) {
+        showQueryError();
+        pushHistory(sql, false, 'column "emial" does not exist');
+        return;
+      }
+      if (looksRead(sql)) {
+        showQueryRows("4 rows · 18 ms");
+        pushHistory(sql, true, "4 rows · 18 ms");
+      } else if (/^(insert|update|delete)\b/i.test(sql)) {
+        $("query-results").innerHTML = '<div class="result-meta">2 rows affected · 11 ms</div>';
+        pushHistory(sql, true, "2 rows affected · 11 ms");
+      } else {
+        $("query-results").innerHTML = '<div class="result-meta">Done · 9 ms</div>';
+        pushHistory(sql, true, "Done · 9 ms");
+      }
+      statusLine("Idle");
+    }
+
+    function pushHistory(sql, ok, detail) {
+      const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      state.history.unshift({ sql, ok, detail, at });
+      state.history = state.history.slice(0, 100);
+      if (state.historyOpen) renderHistory();
+    }
+
+    function renderHistory() {
+      $("history").innerHTML = state.history.slice(0, 8).map((h, i) => `
+        <button class="item" type="button" data-hist="${i}">
+          <span class="mono">${esc(h.sql.replace(/\s+/g, " "))}</span>
+          <span class="meta">${esc(h.at)} · ${esc(h.detail)}</span>
+        </button>`).join("") || '<div class="empty-note">No history yet.</div>';
+    }
+
+    function openData(db, schema, tableName, preset) {
+      const bag = lookupBag(db, schema);
+      const rel = bag && (bag.tables?.[tableName] || null);
+      const view = bag && bag.views?.[tableName];
+      state.gridDb = db;
+      state.gridSchema = schema;
+      state.gridTable = tableName;
+      const columns = rel ? rel.columns : [
+        col("id", "integer", { pk: true, num: true }),
+        col("email", "text"),
+        col("name", "text", { nullable: true })
+      ];
+      state.gridColumns = columns;
+      state.visible = columns.map((c) => c.name);
+      state.filters = preset ? [{ col: "email", op: "contains", value: "example.com" }] : [];
+      state.sort = preset ? { key: "created_at", dir: "desc" } : null;
+      state.page = 0;
+      state.pageSize = 100;
+      $("page-size").value = "100";
+      state.count = null;
+      $("count-out").textContent = "";
+      state.columnsOpen = false;
+      $("column-popover").hidden = true;
+      ensureTab({ id: "data:" + tableName, kind: "data", title: tableName });
+      state.active = "data:" + tableName;
+      renderTabs();
+      fillFilterColumns();
+      renderColumnPopover();
+      renderData();
+      statusLine("Idle");
+      if (!rel && view) state.gridViewSql = view;
+      else state.gridViewSql = null;
+    }
+
+    function fillFilterColumns() {
+      const sel = $("filter-col");
+      sel.innerHTML = state.gridColumns.map((c) => `<option value="${esc(c.name)}">${esc(c.name)}</option>`).join("");
+    }
+
+    function renderColumnPopover() {
+      $("column-popover").innerHTML = state.gridColumns.map((c) => {
+        const on = state.visible.includes(c.name);
+        const last = on && state.visible.length === 1;
+        return `<label class="check"><input type="checkbox" data-col="${esc(c.name)}" ${on ? "checked" : ""} ${last ? "disabled" : ""}> ${esc(c.name)}</label>`;
+      }).join("");
+    }
+
+    function filteredRows() {
+      const bag = lookupBag(state.gridDb, state.gridSchema);
+      const rel = bag && bag.tables && bag.tables[state.gridTable];
+      let rows = rel ? rel.rows.slice() : [];
+      if (state.gridViewSql && !rel) {
+        rows = (bag.tables.users || bag.tables.customers || { rows: [] }).rows.filter((r) => r.name);
+      }
+      state.filters.forEach((f) => {
+        if (!state.visible.includes(f.col) && !state.gridColumns.some((c) => c.name === f.col)) return;
+        rows = rows.filter((r) => matchFilter(r, f));
+      });
+      if (state.sort) {
+        const { key, dir } = state.sort;
+        const col = state.gridColumns.find((c) => c.name === key);
+        rows.sort((a, b) => compareCells(a[key], b[key], col && col.num) * (dir === "asc" ? 1 : -1));
+      }
+      return rows;
+    }
+
+    function matchFilter(row, f) {
+      const v = row[f.col];
+      if (f.op === "empty") return v == null || v === "";
+      if (f.op === "notempty") return !(v == null || v === "");
+      const s = v == null ? "" : String(v);
+      const q = String(f.value ?? "");
+      if (f.op === "eq") return s === q;
+      if (f.op === "neq") return s !== q;
+      if (f.op === "contains") return s.toLowerCase().includes(q.toLowerCase());
+      const a = Number(s), b = Number(q);
+      if (f.op === "gt") return Number.isFinite(a) && Number.isFinite(b) ? a > b : s > q;
+      if (f.op === "lt") return Number.isFinite(a) && Number.isFinite(b) ? a < b : s < q;
+      return true;
+    }
+
+    function compareCells(a, b, numeric) {
+      if (a == null && b == null) return 0;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      if (numeric) return Number(a) - Number(b);
+      return String(a).localeCompare(String(b));
+    }
+
+    function opSql(engine, col, op) {
+      const c = qid(engine, col);
+      if (op === "eq") return `${c} = ${engine === "MySQL" ? "?" : "$1"}`;
+      if (op === "neq") return `${c} <> ${engine === "MySQL" ? "?" : "$1"}`;
+      if (op === "contains") return engine === "MySQL" ? `${c} like ?` : `${c} ilike $1`;
+      if (op === "gt") return `${c} > ${engine === "MySQL" ? "?" : "$1"}`;
+      if (op === "lt") return `${c} < ${engine === "MySQL" ? "?" : "$1"}`;
+      if (op === "empty") return `${c} is null`;
+      if (op === "notempty") return `${c} is not null`;
+      return c;
+    }
+
+    function dataSql(engine) {
+      const cols = state.visible.map((name) => qid(engine, name)).join(", ");
+      let from = qid(engine, state.gridTable);
+      if (engine !== "MySQL" && state.gridSchema) from = `${qid(engine, state.gridSchema)}.${from}`;
+      const active = state.filters.filter((f) => state.gridColumns.some((c) => c.name === f.col));
+      const where = active.length ? "\nwhere " + active.map((f) => opSql(engine, f.col, f.op)).join("\nand ") : "";
+      const order = state.sort && state.visible.includes(state.sort.key)
+        ? `\norder by ${qid(engine, state.sort.key)} ${state.sort.dir}` : "";
+      return `select ${cols}\nfrom ${from}${where}${order}\nlimit ${state.pageSize} offset ${state.page * state.pageSize}`;
+    }
+
+    function renderData() {
+      const rows = filteredRows();
+      const start = state.page * state.pageSize;
+      const pageRows = rows.slice(start, start + state.pageSize);
+      const end = start + pageRows.length;
+      $("page-label").textContent = pageRows.length ? `${start + 1}–${end}` : "0 rows";
+      $("page-prev").disabled = state.page === 0;
+      $("page-next").disabled = end >= rows.length;
+      $("filter-chips").innerHTML = state.filters.map((f, i) => {
+        const label = f.op === "empty" || f.op === "notempty"
+          ? `${f.col} ${f.op === "empty" ? "is empty" : "is not empty"}`
+          : `${f.col} ${f.op} ${f.value}`;
+        return `<span class="chip">${esc(label)} <button type="button" data-rm-filter="${i}" aria-label="Remove filter">×</button></span>`;
+      }).join("");
+      const cols = state.gridColumns.filter((c) => state.visible.includes(c.name));
+      const head = cols.map((c) => {
+        const arrow = state.sort && state.sort.key === c.name ? (state.sort.dir === "asc" ? " ↑" : " ↓") : "";
+        const pk = c.pk ? " PK" : "";
+        return `<th class="${c.num ? "num " : ""}sortable" data-sort="${esc(c.name)}">${esc(c.name)}${pk}${arrow}</th>`;
+      }).join("");
+      const body = pageRows.length ? pageRows.map((r) => `<tr>${cols.map((c) => {
+        const v = r[c.name];
+        if (v == null) return '<td class="nil">NULL</td>';
+        return `<td class="${c.num ? "num" : ""}">${esc(v)}</td>`;
+      }).join("")}</tr>`).join("") : `<tr><td colspan="${Math.max(cols.length, 1)}">No rows match.</td></tr>`;
+      $("data-grid").innerHTML = `<table class="grid"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+      $("data-sql").textContent = dataSql(state.conn.engine);
+    }
+
+    function ddlTypes(engine) {
+      return typesFor(engine).map(([value, label]) => ({ value, label }));
+    }
+
+    function defaultDdl() {
+      const engine = state.conn.engine;
+      if (engine === "MySQL") {
+        return {
+          table: "invoices",
+          schema: null,
+          columns: [
+            { name: "id", type: "bigint auto", length: "", precision: "", scale: "", def: "", nullable: false, pk: true },
+            { name: "customer_id", type: "int", length: "", precision: "", scale: "", def: "", nullable: false, pk: false },
+            { name: "total", type: "decimal", length: "", precision: "12", scale: "2", def: "", nullable: false, pk: false },
+            { name: "issued_on", type: "date", length: "", precision: "", scale: "", def: "", nullable: true, pk: false }
+          ]
+        };
+      }
+      return {
+        table: "invoices",
+        schema: "public",
+        columns: [
+          { name: "id", type: "bigint identity", length: "", precision: "", scale: "", def: "", nullable: false, pk: true },
+          { name: "customer_id", type: "integer", length: "", precision: "", scale: "", def: "", nullable: false, pk: false },
+          { name: "total", type: "numeric", length: "", precision: "12", scale: "2", def: "", nullable: false, pk: false },
+          { name: "issued_on", type: "date", length: "", precision: "", scale: "", def: "", nullable: true, pk: false }
+        ]
+      };
+    }
+
+    function openDdl() {
+      state.ddl = { ...defaultDdl(), dirty: false };
+      const engine = state.conn.engine;
+      const schemaField = $("schema-field");
+      if (engine === "MySQL") schemaField.hidden = true;
+      else {
+        schemaField.hidden = false;
+        const db = (models[state.conn.id].databases || []).find((d) => d.name === state.conn.database) || models[state.conn.id].databases[0];
+        $("ddl-schema").innerHTML = (db.schemas || []).map((s) => `<option ${s.name === "public" ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+      }
+      $("ddl-table").value = state.ddl.table;
+      $("ddl-msg").textContent = "";
+      $("ddl-reset").hidden = true;
+      renderDdlColumns();
+      writeDdlSql(false);
+      ensureTab({ id: "ddl", kind: "ddl", title: "Create table" });
+      state.active = "ddl";
+      renderTabs();
+    }
+
+    function renderDdlColumns() {
+      const engine = state.conn.engine;
+      const options = ddlTypes(engine);
+      $("ddl-columns").innerHTML = state.ddl.columns.map((c, i) => {
+        const ident = isIdentity(c.type);
+        const size = c.type === "varchar"
+          ? `<input data-i="${i}" data-k="length" value="${esc(c.length)}" aria-label="Length">`
+          : (c.type === "numeric" || c.type === "decimal")
+            ? `<span class="size-pair"><input data-i="${i}" data-k="precision" value="${esc(c.precision)}" aria-label="Precision"><input data-i="${i}" data-k="scale" value="${esc(c.scale)}" aria-label="Scale"></span>`
+            : c.type === "other"
+              ? `<input data-i="${i}" data-k="length" value="${esc(c.length)}" placeholder="raw type" aria-label="Raw type">`
+              : "";
+        const opts = options.map((o) => `<option value="${esc(o.value)}" ${o.value === c.type ? "selected" : ""}>${esc(o.label)}</option>`).join("");
+        return `<tr>
+          <td><input data-i="${i}" data-k="name" value="${esc(c.name)}" aria-label="Column name"></td>
+          <td><select data-i="${i}" data-k="type" aria-label="Column type">${opts}</select></td>
+          <td>${size}</td>
+          <td><input data-i="${i}" data-k="def" value="${esc(c.def)}" aria-label="Default" ${ident ? "disabled" : ""}></td>
+          <td><input type="checkbox" data-i="${i}" data-k="nullable" ${c.nullable ? "checked" : ""} ${ident || c.pk ? "disabled" : ""} aria-label="Nullable"></td>
+          <td><input type="checkbox" data-i="${i}" data-k="pk" ${c.pk || ident ? "checked" : ""} ${ident ? "disabled" : ""} aria-label="Primary key"></td>
+          <td><button class="btn btn-quiet" type="button" data-rm-col="${i}" ${state.ddl.columns.length === 1 ? "disabled" : ""}>Remove</button></td>
+        </tr>`;
+      }).join("");
+    }
+
+    function readDdl() {
+      const columns = state.ddl.columns.map((c) => ({ ...c }));
+      document.querySelectorAll("#ddl-columns [data-i]").forEach((el) => {
+        const i = Number(el.dataset.i);
+        const k = el.dataset.k;
+        if (el.type === "checkbox") columns[i][k] = el.checked;
+        else columns[i][k] = el.value;
+      });
+      columns.forEach((c) => {
+        if (isIdentity(c.type)) { c.pk = true; c.nullable = false; c.def = ""; }
+        if (c.pk) c.nullable = false;
+      });
+      const ident = columns.map((c, i) => isIdentity(c.type) ? i : -1).filter((i) => i >= 0);
+      if (ident.length > 1) {
+        ident.slice(0, -1).forEach((i) => {
+          columns[i].type = state.conn.engine === "MySQL" ? "bigint" : "bigint";
+          columns[i].pk = false;
+        });
+      }
+      state.ddl.columns = columns;
+      state.ddl.table = $("ddl-table").value.trim();
+      if (state.conn.engine !== "MySQL") state.ddl.schema = $("ddl-schema").value;
+    }
+
+    function columnSql(engine, c) {
+      const name = qid(engine, c.name || "column");
+      let type = c.type;
+      if (engine === "MySQL") {
+        if (type === "bigint auto") type = "bigint";
+        else if (type === "int auto") type = "int";
+        else if (type === "decimal") type = `decimal(${c.precision || "10"}, ${c.scale || "0"})`;
+        else if (type === "varchar") type = `varchar(${c.length || "255"})`;
+        else if (type === "other") type = c.length || "text";
+        let line = `${name} ${type}`;
+        line += c.nullable ? " null" : " not null";
+        if (c.type === "bigint auto" || c.type === "int auto") line += " auto_increment";
+        if (c.def) line += ` default ${c.def}`;
+        return line;
+      }
+      if (type === "bigint identity") type = "bigint generated always as identity";
+      else if (type === "int identity") type = "integer generated always as identity";
+      else if (type === "numeric") type = `numeric(${c.precision || "10"}, ${c.scale || "0"})`;
+      else if (type === "varchar") type = `varchar(${c.length || "255"})`;
+      else if (type === "other") type = c.length || "text";
+      let line = `${name} ${type}`;
+      line += c.nullable ? " null" : " not null";
+      if (c.def) line += ` default ${c.def}`;
+      return line;
+    }
+
+    function buildDdlSql() {
+      const engine = state.conn.engine;
+      const cols = state.ddl.columns.filter((c) => c.name);
+      const pk = cols.filter((c) => c.pk || isIdentity(c.type));
+      const lines = cols.map((c) => "  " + columnSql(engine, c));
+      if (pk.length) lines.push("  primary key (" + pk.map((c) => qid(engine, c.name)).join(", ") + ")");
+      const table = state.ddl.table || "table_name";
+      const target = engine === "MySQL"
+        ? qid(engine, table)
+        : `${qid(engine, state.ddl.schema || "public")}.${qid(engine, table)}`;
+      return `create table ${target} (\n${lines.join(",\n")}\n);`;
+    }
+
+    function writeDdlSql(fromUserSql) {
+      if (fromUserSql) return;
+      if (state.ddl.dirty) return;
+      $("ddl-sql").value = buildDdlSql();
+    }
+
+    function definitionOf(db, schema, name, kind) {
+      const bag = lookupBag(db, schema);
+      if (!bag) return "";
+      const engine = state.conn.engine;
+      if (kind === "view") {
+        const body = bag.views[name] || "";
+        return engine === "MySQL"
+          ? `create view ${qid(engine, name)} as\n${body};`
+          : `create view ${qid(engine, schema)}.${qid(engine, name)} as\n${body};`;
+      }
+      const t = bag.tables[name];
+      if (!t) return "";
+      const lines = t.columns.map((c) => {
+        const base = { ...c, type: engine === "MySQL" && c.type === "integer" ? "int" : c.type };
+        return "  " + columnSql(engine, base);
+      });
+      const pk = t.columns.filter((c) => c.pk);
+      if (pk.length) lines.push("  primary key (" + pk.map((c) => qid(engine, c.name)).join(", ") + ")");
+      const target = engine === "MySQL" ? qid(engine, name) : `${qid(engine, schema)}.${qid(engine, name)}`;
+      return `create table ${target} (\n${lines.join(",\n")}\n);`;
+    }
+
+    function openDefinition(node) {
+      const kind = node.kind === "view" ? "view" : "table";
+      const name = node.table || node.view;
+      ensureTab({ id: "def:" + name, kind: "def", title: name + " definition" });
+      state.active = "def:" + name;
+      $("def-caption").textContent = kind === "view" ? "View definition · read-only" : "Table definition · read-only";
+      $("def-sql").textContent = definitionOf(node.db, node.schema, name, kind);
+      renderTabs();
+    }
+
+    function openConnectionForm(mode, source) {
+      state.editingId = mode === "edit" ? source.id : null;
+      state.portTouched = mode !== "new";
+      $("conn-title").textContent = mode === "edit" ? "Edit connection" : "New connection";
+      $("f-name").value = mode === "dup" ? source.name + " copy" : mode === "edit" ? source.name : "";
+      $("f-engine").value = source ? source.engine : "PostgreSQL";
+      $("f-host").value = source ? source.host : "localhost";
+      $("f-port").value = source ? source.port : "5432";
+      $("f-user").value = source ? source.user : "";
+      $("f-password").value = "";
+      $("f-password").placeholder = mode === "edit" ? "Unchanged if left blank" : "Optional";
+      $("f-database").value = source ? source.database : "";
+      $("f-tls").value = source ? source.tls : "Off";
+      $("f-readonly").checked = source ? source.readOnly : false;
+      $("test-line").textContent = "";
+      $("test-line").className = "test-line";
+      $("sheet-connection").hidden = false;
+    }
+
+    function quoteDb(engine, name) {
+      return engine === "MySQL"
+        ? "create database " + qid(engine, name) + " character set utf8mb4 collate utf8mb4_0900_ai_ci;"
+        : "create database " + qid(engine, name) + ";";
+    }
+
+    function selectedNode() {
+      return findNode(state.selected);
+    }
+
+    function closeMenu() {
+      $("menu").hidden = true;
+    }
+
+    function openMenu(x, y) {
+      const menu = $("menu");
+      menu.innerHTML = (state.actions || []).map((item) => item.sep
+        ? '<div class="menu-sep"></div>'
+        : `<button type="button" role="menuitem" data-tree-act="${item.act}" class="${item.danger ? "danger" : ""}">${esc(item.label)}</button>`
+      ).join("") || '<div class="empty-note">No actions</div>';
+      menu.hidden = false;
+      menu.style.left = x + "px";
+      menu.style.top = y + "px";
+      const rect = menu.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(x, window.innerWidth - rect.width - 8)) + "px";
+      menu.style.top = Math.max(8, Math.min(y, window.innerHeight - rect.height - 8)) + "px";
+    }
+
+    function runTreeAction(act) {
+      closeMenu();
+      const node = selectedNode();
+      if (act === "refresh") { renderTree(); return; }
+      if (act === "create-db") { openCreateDb(); return; }
+      if (act === "create-table") { openDdl(); return; }
+      if (act === "open" && node) { openData(node.db, node.schema, node.table, false); return; }
+      if (act === "open-view" && node) { openData(node.db, node.schema, node.view, false); return; }
+      if (act === "def" && node) { openDefinition(node); return; }
+      if (act === "add-col" && node) { openAddColumn(node); return; }
+      if (act === "drop" && node) {
+        openDrop({ kind: node.kind, name: node.table || node.view, db: node.db, schema: node.schema, table: node.table, view: node.view });
+        return;
+      }
+      if (act === "drop-db" && node) { openDrop({ kind: "database", name: node.db, db: node.db }); return; }
+      if (act === "drop-col" && node) { openDrop({ kind: "column", name: node.column, db: node.db, schema: node.schema, table: node.table, column: node.column }); }
+    }
+
+    document.querySelectorAll("[data-jump]").forEach((btn) => {
+      btn.addEventListener("click", () => jump(btn.dataset.jump));
+    });
+
+    function jump(id) {
+      closeModals();
+      closeMenu();
+      setJump(id);
+      if (id === "connections") { showScreen("connections"); return; }
+      if (id === "new") { showScreen("connections"); openConnectionForm("new", null); return; }
+      if (id === "query") { connect("pg"); return; }
+      if (id === "error") {
+        connect("pg");
+        openQuery("select emial\nfrom public.users;", { result: "error" });
+        return;
+      }
+      if (id === "data") { connect("pg"); openData("app_dev", "public", "users", true); return; }
+      if (id === "ddl") { connect("pg"); openDdl(); return; }
+      if (id === "drop") {
+        connect("pg");
+        state.selected = "table:app_dev.public.users";
+        renderTree();
+        openDrop({ kind: "table", name: "users", db: "app_dev", schema: "public", table: "users" });
+        return;
+      }
+      if (id === "mysql") { connect("my"); openData("shop", null, "customers", true); return; }
+      if (id === "readonly") {
+        connect("ro");
+        openQuery("select id, name, at\nfrom public.events\norder by at desc;", { result: "rows" });
+        return;
+      }
+    }
+
+    $("new-connection").addEventListener("click", () => { setJump("new"); openConnectionForm("new", null); });
+    $("conn-list").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      const conn = connections.find((c) => c.id === btn.dataset.id);
+      if (btn.dataset.act === "connect") { setJump(""); connect(conn.id); }
+      if (btn.dataset.act === "edit") openConnectionForm("edit", conn);
+      if (btn.dataset.act === "dup") openConnectionForm("dup", conn);
+      if (btn.dataset.act === "del") {
+        state.deleteId = conn.id;
+        $("delete-copy").textContent = `Delete ${conn.name}? The keychain item is removed. Nothing is dropped on the server.`;
+        $("sheet-delete").hidden = false;
+      }
+    });
+
+    $("f-engine").addEventListener("change", () => {
+      if (!state.portTouched) $("f-port").value = $("f-engine").value === "MySQL" ? "3306" : "5432";
+    });
+    $("f-port").addEventListener("input", () => { state.portTouched = true; });
+    $("test-btn").addEventListener("click", () => {
+      const host = $("f-host").value.trim();
+      const port = $("f-port").value.trim();
+      if (!host || !port) {
+        $("test-line").textContent = "Host and port are required.";
+        $("test-line").className = "test-line bad";
+        return;
+      }
+      if (host === "refused.example") {
+        $("test-line").textContent = "Connection timed out after 10 seconds.";
+        $("test-line").className = "test-line bad";
+        return;
+      }
+      $("test-line").textContent = `Server responded to SELECT 1 on ${host}:${port}.`;
+      $("test-line").className = "test-line";
+    });
+    $("conn-cancel").addEventListener("click", () => { $("sheet-connection").hidden = true; });
+    $("conn-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const data = {
+        name: $("f-name").value.trim(),
+        engine: $("f-engine").value,
+        host: $("f-host").value.trim(),
+        port: $("f-port").value.trim(),
+        user: $("f-user").value.trim(),
+        database: $("f-database").value.trim(),
+        tls: $("f-tls").value,
+        readOnly: $("f-readonly").checked
+      };
+      if (state.editingId) {
+        const existing = connections.find((c) => c.id === state.editingId);
+        Object.assign(existing, data);
+      } else {
+        const id = "c" + Math.random().toString(36).slice(2, 7);
+        connections.push({ id, ...data });
+      }
+      $("sheet-connection").hidden = true;
+      renderConnections();
+      setJump("connections");
+    });
+
+    $("delete-cancel").addEventListener("click", () => { $("sheet-delete").hidden = true; });
+    $("delete-confirm").addEventListener("click", () => {
+      connections = connections.filter((c) => c.id !== state.deleteId);
+      $("sheet-delete").hidden = true;
+      renderConnections();
+    });
+
+    $("disconnect").addEventListener("click", () => {
+      clearTimeout(state.timer);
+      showScreen("connections");
+      setJump("connections");
+      closeModals();
+    });
+
+    $("tree-filter").addEventListener("input", () => {
+      state.treeFilter = $("tree-filter").value;
+      renderTree();
+    });
+    $("show-system").addEventListener("change", () => {
+      state.showSystem = $("show-system").checked;
+      if (state.showSystem && state.conn.engine === "PostgreSQL") {
+        models[state.conn.id].databases.forEach((db) => {
+          if (!db.schemas.some((s) => s.name === "information_schema")) {
+            db.schemas.push({ name: "information_schema", tables: { tables: table([col("table_name", "text")], []), columns: table([col("column_name", "text")], []) }, views: {} });
+          }
+        });
+      }
+      if (state.showSystem && state.conn.engine === "MySQL") {
+        ["information_schema", "mysql", "performance_schema", "sys"].forEach((name) => {
+          if (!models[state.conn.id].databases.some((d) => d.name === name)) {
+            models[state.conn.id].databases.push({ name, tables: {}, views: {} });
+          }
+        });
+      }
+      fillDatabases();
+      renderTree();
+    });
+
+    $("tree").addEventListener("click", (e) => {
+      closeMenu();
+      const row = e.target.closest("[data-node]");
+      if (!row) return;
+      const id = row.dataset.node;
+      const node = findNode(id);
+      if (!node) return;
+      if (node.childKey && e.target.closest(".chevron")) {
+        if (state.expanded.has(node.childKey)) state.expanded.delete(node.childKey);
+        else state.expanded.add(node.childKey);
+      }
+      state.selected = id;
+      if (node.kind === "database") {
+        state.conn.database = node.db;
+        fillDatabases();
+        statusLine("Idle");
+      }
+      renderTree();
+    });
+
+    $("tree").addEventListener("dblclick", (e) => {
+      const row = e.target.closest("[data-node]");
+      if (!row || e.target.closest(".chevron")) return;
+      const node = findNode(row.dataset.node);
+      if (!node) return;
+      state.selected = node.id;
+      if (node.kind === "table") runTreeAction("open");
+      else if (node.kind === "view") runTreeAction("open-view");
+      else if (node.childKey) {
+        if (state.expanded.has(node.childKey)) state.expanded.delete(node.childKey);
+        else state.expanded.add(node.childKey);
+        renderTree();
+      }
+    });
+
+    $("tree").addEventListener("contextmenu", (e) => {
+      const row = e.target.closest("[data-node]");
+      if (!row) return;
+      e.preventDefault();
+      const node = findNode(row.dataset.node);
+      if (!node) return;
+      state.selected = node.id;
+      renderTree();
+      openMenu(e.clientX, e.clientY);
+    });
+
+    $("obj-toolbar").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tree-act]");
+      if (!btn) return;
+      runTreeAction(btn.dataset.treeAct);
+    });
+
+    $("menu").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-tree-act]");
+      if (!btn) return;
+      runTreeAction(btn.dataset.treeAct);
+    });
+
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest("#menu") && !e.target.closest("#tree")) closeMenu();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeMenu();
+    });
+
+    function openDrop(info) {
+      state.drop = info;
+      const titles = { table: "Drop table", view: "Drop view", database: "Drop database", column: "Drop column" };
+      $("drop-title").textContent = titles[info.kind];
+      $("drop-expected").textContent = info.name;
+      $("drop-input").value = "";
+      $("drop-confirm").disabled = true;
+      $("sheet-drop").hidden = false;
+      $("drop-input").focus();
+    }
+    $("drop-input").addEventListener("input", () => {
+      $("drop-confirm").disabled = $("drop-input").value !== state.drop.name;
+    });
+    $("drop-cancel").addEventListener("click", () => { $("sheet-drop").hidden = true; });
+    $("drop-confirm").addEventListener("click", () => {
+      const d = state.drop;
+      const bag = lookupBag(d.db, d.schema);
+      if (d.kind === "table" && bag) delete bag.tables[d.table];
+      if (d.kind === "view" && bag) delete bag.views[d.view];
+      if (d.kind === "column" && bag && bag.tables[d.table]) {
+        bag.tables[d.table].columns = bag.tables[d.table].columns.filter((c) => c.name !== d.column);
+      }
+      if (d.kind === "database") {
+        models[state.conn.id].databases = models[state.conn.id].databases.filter((db) => db.name !== d.db);
+        if (state.conn.database === d.db) state.conn.database = models[state.conn.id].databases[0]?.name || "";
+      }
+      $("sheet-drop").hidden = true;
+      state.selected = null;
+      fillDatabases();
+      renderTree();
+      statusLine("Idle");
+    });
+
+    function openCreateDb() {
+      $("cdb-name").value = "billing";
+      $("cdb-help").textContent = state.conn.engine === "MySQL"
+        ? "Character set utf8mb4, collation utf8mb4_0900_ai_ci."
+        : "Encoding UTF8. Locale comes from the template database.";
+      $("cdb-sql").value = quoteDb(state.conn.engine, "billing");
+      $("sheet-createdb").hidden = false;
+    }
+    $("cdb-name").addEventListener("input", () => {
+      $("cdb-sql").value = quoteDb(state.conn.engine, $("cdb-name").value.trim() || "name");
+    });
+    $("cdb-cancel").addEventListener("click", () => { $("sheet-createdb").hidden = true; });
+    $("cdb-run").addEventListener("click", () => {
+      const name = $("cdb-name").value.trim();
+      if (!name) return;
+      const model = models[state.conn.id];
+      if (!model.databases.some((d) => d.name === name)) {
+        model.databases.push(state.conn.engine === "MySQL"
+          ? { name, tables: {}, views: {} }
+          : { name, schemas: [{ name: "public", tables: {}, views: {} }] });
+      }
+      state.conn.database = name;
+      state.expanded.add("db:" + name);
+      $("sheet-createdb").hidden = true;
+      fillDatabases();
+      renderTree();
+      statusLine("Idle");
+    });
+
+    function openAddColumn(node) {
+      state.addCol = node;
+      $("addcol-title").textContent = `Add column to ${node.table}`;
+      $("ac-name").value = "nickname";
+      $("ac-type").innerHTML = ddlTypes(state.conn.engine).map((t) => `<option value="${esc(t.value)}">${esc(t.label)}</option>`).join("");
+      $("ac-type").value = state.conn.engine === "MySQL" ? "varchar" : "text";
+      $("ac-default").value = "";
+      $("ac-null").checked = true;
+      writeAddSql();
+      $("sheet-addcol").hidden = false;
+    }
+    function writeAddSql() {
+      const engine = state.conn.engine;
+      const node = state.addCol;
+      const name = $("ac-name").value.trim() || "column_name";
+      const type = $("ac-type").value;
+      const nullable = $("ac-null").checked;
+      const def = $("ac-default").value.trim();
+      const colSql = columnSql(engine, { name, type, nullable, pk: false, def, length: type === "varchar" ? "255" : "", precision: "10", scale: "0" });
+      const target = engine === "MySQL" ? qid(engine, node.table) : `${qid(engine, node.schema)}.${qid(engine, node.table)}`;
+      $("ac-sql").value = `alter table ${target}\n  add column ${colSql};`;
+    }
+    ["ac-name", "ac-type", "ac-default", "ac-null"].forEach((id) => {
+      $(id).addEventListener("input", writeAddSql);
+      $(id).addEventListener("change", writeAddSql);
+    });
+    $("ac-cancel").addEventListener("click", () => { $("sheet-addcol").hidden = true; });
+    $("addcol-form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const node = state.addCol;
+      const bag = lookupBag(node.db, node.schema);
+      const t = bag && bag.tables[node.table];
+      if (t) {
+        t.columns.push(col($("ac-name").value.trim() || "nickname", $("ac-type").value === "varchar" ? "varchar" : $("ac-type").value, { nullable: $("ac-null").checked }));
+        t.rows.forEach((r) => { r[$("ac-name").value.trim()] = null; });
+      }
+      $("sheet-addcol").hidden = true;
+      state.expanded.add(node.id);
+      renderTree();
+    });
+
+    $("tabbar").addEventListener("click", (e) => {
+      const closer = e.target.closest("[data-close]");
+      if (closer) {
+        const id = closer.dataset.close;
+        state.tabs = state.tabs.filter((t) => t.id !== id);
+        if (state.active === id) state.active = state.tabs.at(-1)?.id || null;
+        renderTabs();
+        return;
+      }
+      if (e.target.closest("#new-query")) {
+        rememberQuery();
+        const n = state.tabs.filter((t) => t.kind === "query").length + 1;
+        const id = "query-" + Date.now();
+        state.queryText[id] = "";
+        state.tabs.push({ id, kind: "query", title: "Query " + n });
+        state.active = id;
+        $("sql").value = "";
+        syncEditor();
+        $("query-results").innerHTML = "";
+        renderTabs();
+        statusLine("Idle");
+        return;
+      }
+      const tab = e.target.closest("[data-tab]");
+      if (tab) showQuery(tab.dataset.tab);
+    });
+
+    $("sql").addEventListener("input", syncEditor);
+    $("sql").addEventListener("scroll", syncEditor);
+    $("format").addEventListener("click", () => {
+      $("sql").value = formatSql($("sql").value);
+      const tab = state.tabs.find((t) => t.id === state.active);
+      if (tab && tab.kind === "query") state.queryText[tab.id] = $("sql").value;
+      syncEditor();
+    });
+    $("run").addEventListener("click", () => runEditor(false));
+    document.addEventListener("keydown", (e) => {
+      const activeTab = state.tabs.find((t) => t.id === state.active);
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && state.screen === "workspace" && activeTab && activeTab.kind === "query") {
+        e.preventDefault();
+        runEditor(false);
+      }
+    });
+    $("cancel").addEventListener("click", () => {
+      clearTimeout(state.timer);
+      state.running = false;
+      $("cancel").disabled = true;
+      $("run").disabled = false;
+      $("query-results").innerHTML = '<div class="result-meta">Canceled</div>';
+      statusLine("Canceled");
+    });
+    $("query-results").addEventListener("click", (e) => {
+      if (e.target.id === "confirm-run") runEditor(true);
+      if (e.target.id === "confirm-cancel") {
+        $("query-results").innerHTML = "";
+        statusLine("Idle");
+      }
+    });
+    $("history-btn").addEventListener("click", () => {
+      state.historyOpen = !state.historyOpen;
+      $("history").hidden = !state.historyOpen;
+      $("history-btn").setAttribute("aria-expanded", String(state.historyOpen));
+      if (state.historyOpen) renderHistory();
+    });
+    $("history").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-hist]");
+      if (!btn) return;
+      const item = state.history[Number(btn.dataset.hist)];
+      openQuery(item.sql, { result: item.ok ? "rows" : "error" });
+      state.historyOpen = false;
+      $("history").hidden = true;
+    });
+    $("db-select").addEventListener("change", () => {
+      state.conn.database = $("db-select").value;
+      statusLine("Idle");
+      renderTree();
+    });
+
+    $("columns-btn").addEventListener("click", () => {
+      state.columnsOpen = !state.columnsOpen;
+      $("column-popover").hidden = !state.columnsOpen;
+      $("columns-btn").setAttribute("aria-expanded", String(state.columnsOpen));
+    });
+    $("column-popover").addEventListener("change", (e) => {
+      const input = e.target.closest("[data-col]");
+      if (!input) return;
+      const name = input.dataset.col;
+      if (input.checked) state.visible.push(name);
+      else state.visible = state.visible.filter((n) => n !== name);
+      state.filters = state.filters.filter((f) => state.visible.includes(f.col));
+      if (state.sort && !state.visible.includes(state.sort.key)) state.sort = null;
+      state.count = null;
+      $("count-out").textContent = "";
+      renderColumnPopover();
+      renderData();
+    });
+    $("filter-op").addEventListener("change", () => {
+      const unary = $("filter-op").value === "empty" || $("filter-op").value === "notempty";
+      $("filter-value").disabled = unary;
+    });
+    $("filter-apply").addEventListener("click", () => {
+      const op = $("filter-op").value;
+      const value = $("filter-value").value;
+      if ((op !== "empty" && op !== "notempty") && value === "") return;
+      state.filters.push({ col: $("filter-col").value, op, value });
+      state.page = 0;
+      state.count = null;
+      $("count-out").textContent = "";
+      renderData();
+    });
+    $("filter-clear").addEventListener("click", () => {
+      state.filters = [];
+      state.page = 0;
+      state.count = null;
+      $("count-out").textContent = "";
+      $("filter-value").value = "";
+      renderData();
+    });
+    $("filter-chips").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-rm-filter]");
+      if (!btn) return;
+      state.filters.splice(Number(btn.dataset.rmFilter), 1);
+      state.page = 0;
+      state.count = null;
+      $("count-out").textContent = "";
+      renderData();
+    });
+    $("data-grid").addEventListener("click", (e) => {
+      const th = e.target.closest("[data-sort]");
+      if (!th) return;
+      const key = th.dataset.sort;
+      if (!state.sort || state.sort.key !== key) state.sort = { key, dir: "asc" };
+      else if (state.sort.dir === "asc") state.sort = { key, dir: "desc" };
+      else state.sort = null;
+      renderData();
+    });
+    $("page-size").addEventListener("change", () => {
+      state.pageSize = Number($("page-size").value);
+      state.page = 0;
+      renderData();
+    });
+    $("page-prev").addEventListener("click", () => { if (state.page > 0) { state.page--; renderData(); } });
+    $("page-next").addEventListener("click", () => { state.page++; renderData(); });
+    $("count-btn").addEventListener("click", () => {
+      state.count = filteredRows().length;
+      $("count-out").textContent = `Count: ${state.count}`;
+    });
+
+    $("ddl-columns").addEventListener("input", onDdlEdit);
+    $("ddl-columns").addEventListener("change", onDdlEdit);
+    $("ddl-table").addEventListener("input", onDdlEdit);
+    $("ddl-schema").addEventListener("change", onDdlEdit);
+    function onDdlEdit(e) {
+      readDdl();
+      const k = e.target && e.target.dataset && e.target.dataset.k;
+      if (e.type === "change" && (k === "type" || k === "pk" || k === "nullable")) renderDdlColumns();
+      writeDdlSql(false);
+    }
+    $("add-col").addEventListener("click", () => {
+      readDdl();
+      const engine = state.conn.engine;
+      state.ddl.columns.push({ name: "", type: engine === "MySQL" ? "varchar" : "text", length: "255", precision: "", scale: "", def: "", nullable: true, pk: false });
+      renderDdlColumns();
+      writeDdlSql(false);
+    });
+    $("ddl-columns").addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-rm-col]");
+      if (!btn) return;
+      readDdl();
+      state.ddl.columns.splice(Number(btn.dataset.rmCol), 1);
+      renderDdlColumns();
+      writeDdlSql(false);
+    });
+    $("ddl-sql").addEventListener("input", () => {
+      state.ddl.dirty = true;
+      $("ddl-reset").hidden = false;
+    });
+    $("ddl-reset").addEventListener("click", () => {
+      state.ddl.dirty = false;
+      $("ddl-reset").hidden = true;
+      writeDdlSql(false);
+    });
+    $("ddl-cancel").addEventListener("click", () => {
+      state.tabs = state.tabs.filter((t) => t.id !== "ddl");
+      state.active = state.tabs.at(-1)?.id || null;
+      renderTabs();
+    });
+    $("ddl-run").addEventListener("click", () => {
+      readDdl();
+      if (!state.ddl.table) { $("ddl-msg").textContent = "Table name is required."; $("ddl-msg").style.color = "var(--danger)"; return; }
+      if (!state.ddl.columns.some((c) => c.name)) { $("ddl-msg").textContent = "Add at least one named column."; $("ddl-msg").style.color = "var(--danger)"; return; }
+      const dbName = state.conn.database;
+      const schema = state.ddl.schema || "public";
+      const bag = lookupBag(dbName, state.conn.engine === "MySQL" ? null : schema);
+      if (bag) {
+        bag.tables[state.ddl.table] = table(state.ddl.columns.filter((c) => c.name).map((c) => col(c.name, c.type, { nullable: c.nullable, pk: c.pk || isIdentity(c.type), def: c.def, num: /int|numeric|decimal|bigint/i.test(c.type) })), []);
+      }
+      const folder = state.conn.engine === "MySQL" ? `folder:${dbName}.tables` : `folder:${dbName}.${schema}.tables`;
+      state.expanded.add("db:" + dbName);
+      if (state.conn.engine !== "MySQL") state.expanded.add(`sc:${dbName}.${schema}`);
+      state.expanded.add(folder);
+      state.selected = state.conn.engine === "MySQL" ? `table:${dbName}.${state.ddl.table}` : `table:${dbName}.${schema}.${state.ddl.table}`;
+      state.tabs = state.tabs.filter((t) => t.id !== "ddl");
+      state.active = state.tabs.at(-1)?.id || null;
+      renderTabs();
+      renderTree();
+      statusLine("Idle");
+      $("status-text").textContent = state.conn.name + " · " + state.conn.engine + " · " + dbName + " · Created " + state.ddl.table;
+    });
+
+    renderConnections();
+    setJump("connections");
+  </script>
+</body>
+</html>
