@@ -3,24 +3,33 @@ package httpapi
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
+
+	"github.com/bustanil/sql-client/internal/store"
 )
 
 type Server struct {
 	Token string
+	Store *store.Store
 	mux   *http.ServeMux
 }
 
-func New(token string) *Server {
-	s := &Server{Token: token, mux: http.NewServeMux()}
+func New(token string, st *store.Store) *Server {
+	s := &Server{Token: token, Store: st, mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
 
 func (s *Server) routes() {
 	s.mux.HandleFunc("GET /health", s.health)
+	s.mux.HandleFunc("GET /connections", s.listConnections)
+	s.mux.HandleFunc("POST /connections", s.createConnection)
+	s.mux.HandleFunc("PATCH /connections/{id}", s.updateConnection)
+	s.mux.HandleFunc("DELETE /connections/{id}", s.deleteConnection)
+	s.mux.HandleFunc("POST /connections/test", s.testConnection)
 }
 
 func (s *Server) Handler() http.Handler {
@@ -63,4 +72,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+func readJSON(r *http.Request, v any) error {
+	dec := json.NewDecoder(r.Body)
+	defer r.Body.Close()
+	if err := dec.Decode(v); err != nil && err != io.EOF {
+		return err
+	}
+	return nil
 }

@@ -6,14 +6,28 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"github.com/bustanil/sql-client/internal/httpapi"
+	"github.com/bustanil/sql-client/internal/store"
 )
 
 func main() {
 	token := os.Getenv("SQLC_TOKEN")
 	if token == "" {
 		log.Fatal("SQLC_TOKEN is required")
+	}
+	dir := os.Getenv("SQLC_DATA_DIR")
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			log.Fatal(err)
+		}
+		dir = filepath.Join(home, "Library", "Application Support", "SQL Client")
+	}
+	st, err := store.Open(dir)
+	if err != nil {
+		log.Fatal(err)
 	}
 	addr := os.Getenv("SQLC_ADDR")
 	if addr == "" {
@@ -30,7 +44,7 @@ func main() {
 	}
 	_ = os.Stdout.Sync()
 
-	srv := &http.Server{Handler: httpapi.New(token).Handler()}
+	srv := &http.Server{Handler: httpapi.New(token, st).Handler()}
 	log.Printf("listening on 127.0.0.1:%d", port)
 	if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)

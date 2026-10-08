@@ -7,7 +7,7 @@ import (
 )
 
 func TestHealthRequiresToken(t *testing.T) {
-	s := New("secret")
+	s := New("secret", nil)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
 	s.Handler().ServeHTTP(rec, req)

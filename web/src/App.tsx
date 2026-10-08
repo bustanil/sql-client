@@ -1,22 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, loadConfig, type ClientConfig } from "./api";
+import { loadConfig, type ClientConfig } from "./api";
+import { Connections } from "./connections";
 
 export function App() {
-  const [status, setStatus] = useState("Starting…");
+  const [config, setConfig] = useState<ClientConfig | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    loadConfig()
-      .then(async (config: ClientConfig) => {
-        await api(config, "/health");
-        if (!cancelled) setStatus("No saved connections.");
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setStatus(err.message);
-      });
-    return () => {
-      cancelled = true;
-    };
+    loadConfig().then(setConfig).catch((err: Error) => setError(err.message));
   }, []);
 
   return (
@@ -29,15 +20,8 @@ export function App() {
         </span>
         <span className="title">SQL Client</span>
       </header>
-      <main className="list">
-        <div className="list-head">
-          <div>
-            <h1>Connections</h1>
-            <p className="sub">Saved on this Mac. Passwords stay in the keychain.</p>
-          </div>
-        </div>
-        <p className="empty">{status}</p>
-      </main>
+      {error && <p className="empty">{error}</p>}
+      {config && <Connections config={config} />}
     </div>
   );
 }

@@ -1,10 +1,28 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, safeStorage } = require("electron");
 const path = require("path");
+const fs = require("fs");
 const crypto = require("crypto");
 const { spawn } = require("child_process");
 const readline = require("readline");
 
 let goProc = null;
+
+function secretsFile() {
+  return path.join(app.getPath("userData"), "secrets.json");
+}
+
+function readSecrets() {
+  try {
+    return JSON.parse(fs.readFileSync(secretsFile(), "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeSecrets(all) {
+  fs.mkdirSync(path.dirname(secretsFile()), { recursive: true });
+  fs.writeFileSync(secretsFile(), JSON.stringify(all));
+}
 
 function startGo() {
   const token = crypto.randomBytes(32).toString("hex");
@@ -13,7 +31,12 @@ function startGo() {
   const args = bin ? [] : ["run", "./cmd/server"];
   goProc = spawn(cmd, args, {
     cwd: path.join(__dirname, ".."),
-    env: { ...process.env, SQLC_TOKEN: token, SQLC_ADDR: "127.0.0.1:0" },
+    env: {
+      ...process.env,
+      SQLC_TOKEN: token,
+      SQLC_ADDR: "127.0.0.1:0",
+      SQLC_DATA_DIR: app.getPath("userData"),
+    },
   });
   goProc.stderr.on("data", (chunk) => process.stderr.write(chunk));
   return new Promise((resolve, reject) => {
@@ -37,9 +60,29 @@ function startGo() {
   });
 }
 
+app.setName("SQL Client");
+
 app.whenReady().then(async () => {
   const config = await startGo();
   ipcMain.handle("config", () => config);
+  ipcMain.handle("keychain:get", (_event, id) => {
+    const saved = readSecrets()[id];
+    if (!saved) return "";
+    return safeStorage.decryptString(Buffer.from(saved, "base64"));
+  });
+  ipcMain.handle("keychain:set", (_event, id, password) => {
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error("The OS keychain is not available.");
+    }
+    const all = readSecrets();
+    all[id] = safeStorage.encryptString(password).toString("base64");
+    writeSecrets(all);
+  });
+  ipcMain.handle("keychain:delete", (_event, id) => {
+    const all = readSecrets();
+    delete all[id];
+    writeSecrets(all);
+  });
   const win = new BrowserWindow({
     width: 1280,
     height: 840,

@@ -13,6 +13,11 @@ declare global {
   interface Window {
     sqlc?: {
       getConfig: () => Promise<{ origin: string; token: string }>;
+      keychain?: {
+        get: (id: string) => Promise<string>;
+        set: (id: string, password: string) => Promise<void>;
+        delete: (id: string) => Promise<void>;
+      };
     };
   }
 }
