@@ -121,6 +121,31 @@ export function Explorer({
     await refresh();
   }
 
+  async function createForeignKey(table: Row) {
+    const name = window.prompt("Constraint name");
+    const column = window.prompt("Local column");
+    const refTable = window.prompt("Referenced table");
+    const refColumn = window.prompt("Referenced column");
+    if (!name || !column || !refTable || !refColumn) return;
+    const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "createForeignKey",
+        name,
+        table: table.table || table.label,
+        schema: table.schema,
+        refTable,
+        columns: [{ name: column }],
+        refColumns: [refColumn],
+        onDelete: "NO ACTION",
+        onUpdate: "NO ACTION",
+      }),
+    });
+    if (!window.confirm(preview.sql)) return;
+    await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: preview.sql }) });
+    await refresh();
+  }
+
   async function drop() {
     if (!dropTarget || typedName !== dropTarget.label) return;
     const action =
@@ -192,6 +217,11 @@ export function Explorer({
         {!session.readOnly && selectedRow?.kind === "table" && (
           <button className="btn" type="button" onClick={() => void createIndex(selectedRow)}>
             Create index
+          </button>
+        )}
+        {!session.readOnly && selectedRow?.kind === "table" && (
+          <button className="btn" type="button" onClick={() => void createForeignKey(selectedRow)}>
+            Create foreign key
           </button>
         )}
         {!session.readOnly && selectedRow && ["table", "view", "database", "column"].includes(selectedRow.kind) && (
