@@ -3,9 +3,29 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { sql } from "@codemirror/lang-sql";
 import { defaultKeymap } from "@codemirror/commands";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { tags } from "@lezer/highlight";
 import { api, type ClientConfig } from "./api";
 import { formatSQL } from "./format";
 import { rowsToCSV, saveCSV } from "./csv";
+import { SelectableTable, type RowScope } from "./selectable";
+
+const sqlHighlight = HighlightStyle.define([
+  { tag: tags.keyword, color: "#1d4e89", fontWeight: "650" },
+  { tag: tags.string, color: "#1d6b43" },
+  { tag: tags.number, color: "#8a4b12" },
+  { tag: tags.comment, color: "#918b82", fontStyle: "italic" },
+  { tag: tags.operator, color: "#5c564c" },
+  { tag: [tags.bool, tags.null], color: "#1d4e89" },
+  { tag: tags.typeName, color: "#6a4a28" },
+]);
+
+const editorTheme = EditorView.theme({
+  "&": { backgroundColor: "var(--paper)", color: "var(--text)", height: "100%" },
+  ".cm-scroller": { fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" },
+  ".cm-content": { caretColor: "var(--text)" },
+  "&.cm-focused": { outline: "none" },
+});
 
 type Result = {
   columns?: string[];
@@ -24,10 +44,14 @@ export function QueryEditor({
   config,
   sessionId,
   connectionId,
+  clearRows,
+  onRowScope,
 }: {
   config: ClientConfig;
   sessionId: string;
   connectionId?: string;
+  clearRows: number;
+  onRowScope?: (scope: RowScope | null) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -51,7 +75,13 @@ export function QueryEditor({
         editor = new EditorView({
           state: EditorState.create({
             doc: "select 1;",
-            extensions: [sql({ schema: data.tables }), keymap.of(defaultKeymap), EditorView.lineWrapping],
+            extensions: [
+              sql({ schema: data.tables }),
+              syntaxHighlighting(sqlHighlight),
+              editorTheme,
+              keymap.of(defaultKeymap),
+              EditorView.lineWrapping,
+            ],
           }),
           parent: host.current,
         });
@@ -146,26 +176,9 @@ export function QueryEditor({
         <button className="btn" type="button" onClick={format}>
           Format
         </button>
-        <label className="meta">
-          Timeout
-          <select aria-label="Statement timeout" value={timeoutSec} onChange={(e) => setTimeoutSec(Number(e.target.value))}>
-            <option value={15}>15 seconds</option>
-            <option value={30}>30 seconds</option>
-            <option value={60}>60 seconds</option>
-            <option value={300}>5 minutes</option>
-            <option value={0}>No timeout</option>
-          </select>
-        </label>
         <button className="btn" type="button" disabled={!running} onClick={() => void cancel()}>
           Cancel
         </button>
-        <label className="meta">
-          Rows
-          <select aria-label="Result cap" value={maxRows} onChange={(e) => setMaxRows(Number(e.target.value))}>
-            <option value={1000}>1000</option>
-            <option value={5000}>5000</option>
-          </select>
-        </label>
         <button className="btn" type="button" onClick={() => void showHistory()}>
           History
         </button>
@@ -197,31 +210,35 @@ export function QueryEditor({
             {result.elapsedMs != null ? ` · ${result.elapsedMs} ms` : ""}
           </div>
           {result.columns && result.columns.length > 0 && (
-            <div className="grid-scroll">
-              <table className="grid">
-                <thead>
-                  <tr>
-                    {result.columns.map((name) => (
-                      <th key={name}>{name}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {(result.rows || []).map((row, index) => (
-                    <tr key={index}>
-                      {row.map((cell, cellIndex) => (
-                        <td key={cellIndex} className={cell === null ? "nil" : ""}>
-                          {cell === null ? "NULL" : String(cell)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <SelectableTable
+              columns={result.columns}
+              rows={result.rows || []}
+              clearRows={clearRows}
+              filename="query-rows.csv"
+              onRowScope={onRowScope}
+            />
           )}
         </>
       )}
+      <div className="grid-footer">
+        <label className="meta">
+          Timeout
+          <select aria-label="Statement timeout" value={timeoutSec} onChange={(e) => setTimeoutSec(Number(e.target.value))}>
+            <option value={15}>15 seconds</option>
+            <option value={30}>30 seconds</option>
+            <option value={60}>60 seconds</option>
+            <option value={300}>5 minutes</option>
+            <option value={0}>No timeout</option>
+          </select>
+        </label>
+        <label className="meta">
+          Rows
+          <select aria-label="Result cap" value={maxRows} onChange={(e) => setMaxRows(Number(e.target.value))}>
+            <option value={1000}>1000</option>
+            <option value={5000}>5000</option>
+          </select>
+        </label>
+      </div>
     </div>
   );
 }

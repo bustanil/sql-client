@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { api, type ClientConfig } from "./api";
+import { OverflowTip } from "./overflow";
+import type { RowScope } from "./grid";
 import type { LiveSession } from "./workspace";
 
 type Column = { name: string; type: string; nullable: boolean; default?: string; primaryKey: boolean };
 type Kind = "connection" | "database" | "schema" | "folder" | "table" | "view" | "column";
+type IconName = "connection" | "database" | "table" | "pk" | "fk" | "index";
 
 type Row = {
   id: string;
@@ -15,17 +19,24 @@ type Row = {
   table?: string;
   meta?: string;
   expandable: boolean;
+  icon?: IconName;
 };
 
 export function Explorer({
   config,
   session,
+  toolbarRoot,
+  rowScope,
+  onPick,
   onSession,
   onOpen,
   onCreate,
 }: {
   config: ClientConfig;
   session: LiveSession;
+  toolbarRoot: HTMLElement | null;
+  rowScope: RowScope | null;
+  onPick: () => void;
   onSession: (next: LiveSession) => void;
   onOpen: (target: { database?: string; schema?: string; relation: string }) => void;
   onCreate: (kind: "database" | "table", schema?: string) => void;
@@ -37,13 +48,14 @@ export function Explorer({
   const [system, setSystem] = useState(false);
   const [selected, setSelected] = useState("conn");
   const [menu, setMenu] = useState<{ x: number; y: number; item: Row } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<Row | null>(null);
   const [typedName, setTypedName] = useState("");
   const [error, setError] = useState("");
 
   async function loadDatabases() {
     const names = await api<string[]>(config, `/sessions/${session.sessionId}/databases?system=${system ? "1" : "0"}`);
-    return names.map((name) => row(`db:${name}`, name, "database", 1, { database: name, expandable: true }));
+    return names.map((name) => row(`db:${name}`, name, "database", 1, { database: name, expandable: true, icon: "database" }));
   }
 
   useEffect(() => {
@@ -53,7 +65,25 @@ export function Explorer({
   }, [system, session.sessionId]);
 
   useEffect(() => {
-    const visible: Row[] = [row("conn", session.name, "connection", 0, { expandable: true })];
+    if (!menu) return;
+    function dismiss(event: PointerEvent) {
+      const target = event.target;
+      if (target instanceof Node && menuRef.current?.contains(target)) return;
+      setMenu(null);
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setMenu(null);
+    }
+    document.addEventListener("pointerdown", dismiss);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", dismiss);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  useEffect(() => {
+    const visible: Row[] = [row("conn", session.name, "connection", 0, { expandable: true, icon: "connection" })];
     function walk(id: string) {
       if (!expanded.has(id)) return;
       for (const child of cache[id] || []) {
@@ -184,6 +214,7 @@ export function Explorer({
             aria-selected={item.id === selected}
             onClick={(event) => {
               setSelected(item.id);
+              onPick();
               const target = event.target as HTMLElement;
               if (item.expandable && target.closest(".chevron")) void toggle(item);
             }}
@@ -197,49 +228,82 @@ export function Explorer({
             onContextMenu={(event) => {
               event.preventDefault();
               setSelected(item.id);
+              onPick();
               setMenu({ x: event.clientX, y: event.clientY, item });
             }}
           >
             <span className={item.expandable ? "chevron has" + (expanded.has(item.id) ? " open" : "") : "chevron"} />
-            <span className="tree-label">{item.label}</span>
+            {item.icon && <TreeIcon name={item.icon} />}
+            <OverflowTip className="tree-label" text={item.label} />
             {item.meta && <span className="tree-meta">{item.meta}</span>}
             {item.kind === "database" && item.database === session.database && <span className="tree-meta">current</span>}
           </button>
         ))}
       </div>
-      <div className="obj-toolbar">
-        <span className="obj-kicker">{selectedRow?.kind || "connection"}</span>
-        <span className="obj-target">{selectedRow?.label || session.name}</span>
-        <button className="btn" type="button" onClick={() => void refresh()}>
-          Refresh
-        </button>
-        {!session.readOnly && <button className="btn" type="button" onClick={() => onCreate("database")}>Create database</button>}
-        {!session.readOnly && selectedRow?.kind === "table" && (
-          <button className="btn" type="button" onClick={() => void createIndex(selectedRow)}>
-            Create index
-          </button>
+      {toolbarRoot &&
+        createPortal(
+          <div className="obj-toolbar" aria-label={rowScope ? "Row operations" : "Object operations"}>
+            {rowScope ? (
+              <>
+                <span className="obj-kicker">Rows</span>
+                <span className="obj-target">{rowScope.count} selected</span>
+                <button className="btn" type="button" onClick={rowScope.exportCSV}>
+                  Export CSV
+                </button>
+              </>
+            ) : (
+              <>
+            <span className="obj-kicker">{selectedRow?.kind || "connection"}</span>
+            <OverflowTip className="obj-target" text={selectedRow?.label || session.name} />
+            <button className="btn" type="button" onClick={() => void refresh()}>
+              Refresh
+            </button>
+            {!session.readOnly && (
+              <button className="btn" type="button" onClick={() => onCreate("database")}>
+                Create database
+              </button>
+            )}
+            {!session.readOnly && selectedRow?.kind === "table" && (
+              <button className="btn" type="button" onClick={() => void createIndex(selectedRow)}>
+                Create index
+              </button>
+            )}
+            {!session.readOnly && selectedRow?.kind === "table" && (
+              <button className="btn" type="button" onClick={() => void createForeignKey(selectedRow)}>
+                Create foreign key
+              </button>
+            )}
+            {!session.readOnly && selectedRow && ["table", "view", "database", "column"].includes(selectedRow.kind) && (
+              <button
+                className="btn danger-text"
+                type="button"
+                onClick={() => {
+                  setDropTarget(selectedRow);
+                  setTypedName("");
+                }}
+              >
+                Drop
+              </button>
+            )}
+            {!session.readOnly && (selectedRow?.kind === "schema" || selectedRow?.kind === "database") && (
+              <button className="btn" type="button" onClick={() => onCreate("table", selectedRow.schema || "public")}>
+                Create table
+              </button>
+            )}
+            {(selectedRow?.kind === "table" || selectedRow?.kind === "view") && (
+              <button
+                className="btn"
+                type="button"
+                onClick={() => onOpen({ database: selectedRow.database, schema: selectedRow.schema, relation: selectedRow.label })}
+              >
+                Open data
+              </button>
+            )}
+              </>
+            )}
+          </div>,
+          toolbarRoot,
         )}
-        {!session.readOnly && selectedRow?.kind === "table" && (
-          <button className="btn" type="button" onClick={() => void createForeignKey(selectedRow)}>
-            Create foreign key
-          </button>
-        )}
-        {!session.readOnly && selectedRow && ["table", "view", "database", "column"].includes(selectedRow.kind) && (
-          <button className="btn danger-text" type="button" onClick={() => { setDropTarget(selectedRow); setTypedName(""); }}>
-            Drop
-          </button>
-        )}
-        {!session.readOnly && (selectedRow?.kind === "schema" || selectedRow?.kind === "database") && (
-          <button className="btn" type="button" onClick={() => onCreate("table", selectedRow.schema || "public")}>
-            Create table
-          </button>
-        )}
-        {(selectedRow?.kind === "table" || selectedRow?.kind === "view") && (
-          <button className="btn" type="button" onClick={() => onOpen({ database: selectedRow.database, schema: selectedRow.schema, relation: selectedRow.label })}>
-            Open data
-          </button>
-        )}
-      </div>
       {dropTarget && (
         <div className="scrim">
           <div className="sheet narrow">
@@ -254,7 +318,7 @@ export function Explorer({
         </div>
       )}
       {menu && (
-        <div className="menu" style={{ left: menu.x, top: menu.y }} role="menu">
+        <div className="menu" ref={menuRef} style={{ left: menu.x, top: menu.y }} role="menu">
           {(menu.item.kind === "table" || menu.item.kind === "view") && (
             <button type="button" onClick={() => { onOpen({ database: menu.item.database, schema: menu.item.schema, relation: menu.item.label }); setMenu(null); }}>
               Open data
@@ -266,6 +330,51 @@ export function Explorer({
         </div>
       )}
     </>
+  );
+}
+
+function TreeIcon({ name }: { name: IconName }) {
+  return (
+    <svg className={"tree-icon " + name} viewBox="0 0 16 16" aria-hidden="true">
+      {name === "connection" && (
+        <>
+          <circle cx="4" cy="8" r="2" />
+          <path d="M6 8h4" />
+          <circle cx="12" cy="8" r="2" />
+        </>
+      )}
+      {name === "database" && (
+        <>
+          <ellipse cx="8" cy="4" rx="5" ry="2" />
+          <path d="M3 4v8c0 1.1 2.2 2 5 2s5-.9 5-2V4" />
+          <path d="M3 8c0 1.1 2.2 2 5 2s5-.9 5-2" />
+        </>
+      )}
+      {name === "table" && (
+        <>
+          <rect x="2.5" y="3" width="11" height="10" rx="1" />
+          <path d="M2.5 7h11M7 7v6" />
+        </>
+      )}
+      {name === "pk" && (
+        <>
+          <circle cx="5" cy="8" r="2.2" />
+          <path d="M7.2 8H14M11.5 8v2.2M13.4 8v2.2" />
+        </>
+      )}
+      {name === "fk" && (
+        <>
+          <circle cx="4.5" cy="8" r="2" />
+          <path d="M6.5 8H10M10 8l2.5-2.2M10 8l2.5 2.2" />
+        </>
+      )}
+      {name === "index" && (
+        <>
+          <path d="M3 4h10M3 8h10M3 12h6" />
+          <path d="M11 11.2 13.2 13" />
+        </>
+      )}
+    </svg>
   );
 }
 
@@ -295,16 +404,16 @@ async function childrenOf(config: ClientConfig, session: LiveSession, item: Row,
   }
   if (item.kind === "folder" && item.label === "Indexes") {
     const names = await api<string[]>(config, `${base}/indexes?${query(session, item)}&table=${encodeURIComponent(item.table || "")}`);
-    return names.map((name) => row(`index:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database }));
+    return names.map((name) => row(`index:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database, icon: "index" }));
   }
   if (item.kind === "folder" && item.label === "Foreign keys") {
     const names = await api<string[]>(config, `${base}/foreign-keys?${query(session, item)}&table=${encodeURIComponent(item.table || "")}`);
-    return names.map((name) => row(`fkey:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database }));
+    return names.map((name) => row(`fkey:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database, icon: "fk" }));
   }
   if (item.kind === "folder" && item.label === "Tables") {
     const q = query(session, item);
     const names = await api<string[]>(config, `${base}/tables?${q}`);
-    return names.map((name) => row(`table:${item.database}.${item.schema || ""}.${name}`, name, "table", item.depth + 1, { database: item.database, schema: item.schema, table: name, expandable: true }));
+    return names.map((name) => row(`table:${item.database}.${item.schema || ""}.${name}`, name, "table", item.depth + 1, { database: item.database, schema: item.schema, table: name, expandable: true, icon: "table" }));
   }
   if (item.kind === "folder") {
     const q = query(session, item);
@@ -316,7 +425,7 @@ async function childrenOf(config: ClientConfig, session: LiveSession, item: Row,
     const cols = await api<Column[]>(config, `${base}/columns?${q}`);
     const columnRows = cols.map((col) => {
       const meta = [col.type, col.primaryKey ? "PK" : "", col.nullable ? "null" : ""].filter(Boolean).join(" · ");
-      return row(`col:${item.id}.${col.name}`, col.name, "column", item.depth + 1, { meta, table: item.table, schema: item.schema, database: item.database });
+      return row(`col:${item.id}.${col.name}`, col.name, "column", item.depth + 1, { meta, icon: col.primaryKey ? "pk" : undefined, table: item.table, schema: item.schema, database: item.database });
     });
     return [
       ...columnRows,
