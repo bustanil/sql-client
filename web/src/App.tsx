@@ -31,7 +31,9 @@ export function App() {
       </header>
       {error && <p className="empty">{error}</p>}
       {config && !session && <Connections config={config} onConnect={setSession} />}
-      {config && session && <Workspace session={session} onDisconnect={() => void disconnect()} />}
+      {config && session && (
+        <Workspace config={config} session={session} onSession={setSession} onDisconnect={() => void disconnect()} />
+      )}
     </div>
   );
 }

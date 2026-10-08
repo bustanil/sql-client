@@ -133,6 +133,38 @@ h2 { font-size: 16px; margin: 0 0 4px; }
   font-size: 12px;
 }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: #1d6b43; display: inline-block; }
+.tree-tools { padding: 0 10px 8px; display: flex; flex-direction: column; gap: 6px; }
+.tree-tools input { height: 30px; border: 1px solid var(--line-strong); border-radius: 6px; padding: 0 8px; }
+.tree { overflow: auto; flex: 1; padding: 0 6px 8px; }
+.tree-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  min-height: 24px;
+}
+.tree-row[aria-selected="true"] { background: #e4dece; }
+.tree-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-meta { color: #918b82; font-size: 11px; font-family: ui-monospace, monospace; }
+.chevron { width: 14px; height: 14px; display: grid; place-items: center; flex: none; }
+.chevron.has::before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+}
+.chevron.open::before { transform: rotate(45deg); }
+.obj-toolbar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px; border-top: 1px solid var(--line); }
+.obj-kicker { font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; color: #918b82; }
+.obj-target { font-weight: 650; margin-right: 6px; }
+.sidebar { min-height: 0; }
+
 .window { min-height: 0; }
 .list { flex: 1; overflow: auto; }
 

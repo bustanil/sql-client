@@ -12,11 +12,12 @@ import (
 )
 
 type Session struct {
-	ID       string  `json:"sessionId"`
-	Engine   string  `json:"engine"`
-	Database string  `json:"database"`
-	ReadOnly bool    `json:"readOnly"`
-	DB       *sql.DB `json:"-"`
+	ID       string        `json:"sessionId"`
+	Engine   string        `json:"engine"`
+	Database string        `json:"database"`
+	ReadOnly bool          `json:"readOnly"`
+	DB       *sql.DB       `json:"-"`
+	Target   engine.Target `json:"-"`
 }
 
 type Manager struct {
@@ -51,8 +52,9 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (*Session, error) {
 		database = target.Database
 	}
 	s := &Session{
-		ID: newID(), Engine: target.Engine, Database: database, ReadOnly: req.Connection.ReadOnly, DB: db,
+		ID: newID(), Engine: target.Engine, Database: database, ReadOnly: req.Connection.ReadOnly, DB: db, Target: target,
 	}
+	s.Target.Database = database
 	m.mu.Lock()
 	m.items[s.ID] = s
 	m.mu.Unlock()
@@ -76,6 +78,37 @@ func (m *Manager) Get(id string) (*Session, bool) {
 	defer m.mu.Unlock()
 	s, ok := m.items[id]
 	return s, ok
+}
+
+func (m *Manager) Switch(ctx context.Context, id, database string) (*Session, error) {
+	m.mu.Lock()
+	s, ok := m.items[id]
+	m.mu.Unlock()
+	if !ok {
+		return nil, sql.ErrNoRows
+	}
+	if s.Engine == "MySQL" {
+		if _, err := s.DB.ExecContext(ctx, "USE "+engine.Quote("MySQL", database)); err != nil {
+			return nil, err
+		}
+		s.Database = database
+		s.Target.Database = database
+		return s, nil
+	}
+	next := s.Target
+	next.Database = database
+	db, err := engine.Open(ctx, next)
+	if err != nil {
+		return nil, err
+	}
+	old := s.DB
+	s.DB = db
+	s.Database = database
+	s.Target = next
+	if old != nil {
+		_ = old.Close()
+	}
+	return s, nil
 }
 
 func (m *Manager) Close(id string) {

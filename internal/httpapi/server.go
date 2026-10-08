@@ -34,6 +34,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /connections/test", s.testConnection)
 	s.mux.HandleFunc("POST /sessions", s.openSession)
 	s.mux.HandleFunc("DELETE /sessions/{id}", s.closeSession)
+	s.mux.HandleFunc("POST /sessions/{id}/database", s.switchDatabase)
+	s.mux.HandleFunc("GET /sessions/{id}/databases", s.databases)
+	s.mux.HandleFunc("GET /sessions/{id}/schemas", s.schemas)
+	s.mux.HandleFunc("GET /sessions/{id}/tables", s.tables)
+	s.mux.HandleFunc("GET /sessions/{id}/views", s.views)
+	s.mux.HandleFunc("GET /sessions/{id}/columns", s.columns)
 }
 
 func (s *Server) Handler() http.Handler {
