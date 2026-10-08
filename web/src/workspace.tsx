@@ -1,7 +1,8 @@
-import type { ClientConfig } from "./api";
+import { api, type ClientConfig } from "./api";
+import { useState } from "react";
 import { Explorer } from "./explorer";
 import { DataGrid, type GridTarget } from "./grid";
-import { useState } from "react";
+import { QueryEditor } from "./editor";
 
 export type LiveSession = {
   sessionId: string;
@@ -23,6 +24,7 @@ export function Workspace({
   onDisconnect: () => void;
 }) {
   const [grid, setGrid] = useState<GridTarget | null>(null);
+  const [querySession, setQuerySession] = useState<string | null>(null);
   const bits = [session.name, session.engine, session.database || "No database", session.readOnly ? "Read-only" : null, "Idle"].filter(Boolean);
   return (
     <div className="workspace">
@@ -38,11 +40,24 @@ export function Workspace({
           <button className="btn btn-quiet" type="button" onClick={onDisconnect}>
             Disconnect
           </button>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              void api<{ sessionId: string }>(config, `/sessions/${session.sessionId}/spawn`, { method: "POST" }).then((opened) => {
+                setQuerySession(opened.sessionId);
+                setGrid(null);
+              });
+            }}
+          >
+            New query
+          </button>
         </div>
-        <Explorer config={config} session={session} onSession={onSession} onOpen={setGrid} />
+        <Explorer config={config} session={session} onSession={onSession} onOpen={(target) => { setGrid(target); setQuerySession(null); }} />
       </aside>
       <section className="main-pane">
-        {grid && <DataGrid config={config} sessionId={session.sessionId} target={grid} />}
+        {querySession && <QueryEditor config={config} sessionId={querySession} />}
+        {grid && !querySession && <DataGrid config={config} sessionId={session.sessionId} target={grid} />}
         <footer className="status">
           <span className="dot" />
           <span>{bits.join(" · ")}</span>

@@ -41,7 +41,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /sessions/{id}/views", s.views)
 	s.mux.HandleFunc("GET /sessions/{id}/columns", s.columns)
 	s.mux.HandleFunc("POST /sessions/{id}/browse", s.browse)
-	s.mux.HandleFunc("POST /sessions/{id}/browse/count", s.browseCount)
+	s.mux.HandleFunc("POST /sessions/{id}/spawn", s.spawnSession)
+	s.mux.HandleFunc("POST /sessions/{id}/queries", s.runQuery)
 }
 
 func (s *Server) Handler() http.Handler {

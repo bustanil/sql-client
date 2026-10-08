@@ -111,6 +111,26 @@ func (m *Manager) Switch(ctx context.Context, id, database string) (*Session, er
 	return s, nil
 }
 
+func (m *Manager) Spawn(ctx context.Context, id string) (*Session, error) {
+	m.mu.Lock()
+	parent, ok := m.items[id]
+	m.mu.Unlock()
+	if !ok {
+		return nil, sql.ErrNoRows
+	}
+	db, err := engine.Open(ctx, parent.Target)
+	if err != nil {
+		return nil, err
+	}
+	child := &Session{
+		ID: newID(), Engine: parent.Engine, Database: parent.Database, ReadOnly: parent.ReadOnly, DB: db, Target: parent.Target,
+	}
+	m.mu.Lock()
+	m.items[child.ID] = child
+	m.mu.Unlock()
+	return child, nil
+}
+
 func (m *Manager) Close(id string) {
 	m.mu.Lock()
 	s := m.items[id]
