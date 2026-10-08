@@ -37,6 +37,8 @@ export function Explorer({
   const [system, setSystem] = useState(false);
   const [selected, setSelected] = useState("conn");
   const [menu, setMenu] = useState<{ x: number; y: number; item: Row } | null>(null);
+  const [dropTarget, setDropTarget] = useState<Row | null>(null);
+  const [typedName, setTypedName] = useState("");
   const [error, setError] = useState("");
 
   async function loadDatabases() {
@@ -100,6 +102,24 @@ export function Explorer({
     setCache({ conn: items });
   }
 
+  async function drop() {
+    if (!dropTarget || typedName !== dropTarget.label) return;
+    const action =
+      dropTarget.kind === "database" ? "dropDatabase" : dropTarget.kind === "view" ? "dropView" : dropTarget.kind === "column" ? "dropColumn" : "dropTable";
+    const body = {
+      action,
+      name: dropTarget.label,
+      schema: dropTarget.schema,
+      table: dropTarget.table,
+      columns: dropTarget.kind === "column" ? [{ name: dropTarget.label }] : undefined,
+    };
+    const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, { method: "POST", body: JSON.stringify(body) });
+    await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: preview.sql }) });
+    setDropTarget(null);
+    setTypedName("");
+    await refresh();
+  }
+
   const selectedRow = rows.find((item) => item.id === selected);
   return (
     <>
@@ -150,6 +170,11 @@ export function Explorer({
           Refresh
         </button>
         {!session.readOnly && <button className="btn" type="button" onClick={() => onCreate("database")}>Create database</button>}
+        {!session.readOnly && (selectedRow?.kind === "table" || selectedRow?.kind === "view" || selectedRow?.kind === "database" || selectedRow?.kind === "column") && (
+          <button className="btn danger-text" type="button" onClick={() => { setDropTarget(selectedRow); setTypedName(""); }}>
+            Drop
+          </button>
+        )}
         {!session.readOnly && (selectedRow?.kind === "schema" || selectedRow?.kind === "database") && (
           <button className="btn" type="button" onClick={() => onCreate("table", selectedRow.schema || "public")}>
             Create table
@@ -161,6 +186,19 @@ export function Explorer({
           </button>
         )}
       </div>
+      {dropTarget && (
+        <div className="scrim">
+          <div className="sheet narrow">
+            <h2>Drop {dropTarget.kind}</h2>
+            <p>Type {dropTarget.label} to confirm.</p>
+            <input value={typedName} onChange={(e) => setTypedName(e.target.value)} aria-label="Object name" />
+            <div className="sheet-actions">
+              <button className="btn" type="button" onClick={() => setDropTarget(null)}>Cancel</button>
+              <button className="btn btn-danger" type="button" disabled={typedName !== dropTarget.label} onClick={() => void drop()}>Drop</button>
+            </div>
+          </div>
+        </div>
+      )}
       {menu && (
         <div className="menu" style={{ left: menu.x, top: menu.y }} role="menu">
           {(menu.item.kind === "table" || menu.item.kind === "view") && (
