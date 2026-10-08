@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/bustanil/sql-client/internal/session"
 	"github.com/bustanil/sql-client/internal/store"
@@ -16,6 +17,7 @@ type Server struct {
 	Token    string
 	Store    *store.Store
 	Sessions *session.Manager
+	cancels  sync.Map
 	mux      *http.ServeMux
 }
 
@@ -41,8 +43,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /sessions/{id}/views", s.views)
 	s.mux.HandleFunc("GET /sessions/{id}/columns", s.columns)
 	s.mux.HandleFunc("POST /sessions/{id}/browse", s.browse)
+	s.mux.HandleFunc("POST /sessions/{id}/browse/count", s.browseCount)
 	s.mux.HandleFunc("POST /sessions/{id}/spawn", s.spawnSession)
 	s.mux.HandleFunc("POST /sessions/{id}/queries", s.runQuery)
+	s.mux.HandleFunc("POST /sessions/{id}/queries/{queryId}/cancel", s.cancelQuery)
+	s.mux.HandleFunc("GET /connections/{id}/history", s.history)
 }
 
 func (s *Server) Handler() http.Handler {

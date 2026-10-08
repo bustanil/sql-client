@@ -12,12 +12,13 @@ import (
 )
 
 type Session struct {
-	ID       string        `json:"sessionId"`
-	Engine   string        `json:"engine"`
-	Database string        `json:"database"`
-	ReadOnly bool          `json:"readOnly"`
-	DB       *sql.DB       `json:"-"`
-	Target   engine.Target `json:"-"`
+	ID           string        `json:"sessionId"`
+	Engine       string        `json:"engine"`
+	Database     string        `json:"database"`
+	ReadOnly     bool          `json:"readOnly"`
+	ConnectionID string        `json:"-"`
+	DB           *sql.DB       `json:"-"`
+	Target       engine.Target `json:"-"`
 }
 
 type Manager struct {
@@ -52,7 +53,8 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (*Session, error) {
 		database = target.Database
 	}
 	s := &Session{
-		ID: newID(), Engine: target.Engine, Database: database, ReadOnly: req.Connection.ReadOnly, DB: db, Target: target,
+		ID: newID(), Engine: target.Engine, Database: database, ReadOnly: req.Connection.ReadOnly,
+		ConnectionID: req.Connection.ID, DB: db, Target: target,
 	}
 	s.Target.Database = database
 	m.mu.Lock()
@@ -123,7 +125,8 @@ func (m *Manager) Spawn(ctx context.Context, id string) (*Session, error) {
 		return nil, err
 	}
 	child := &Session{
-		ID: newID(), Engine: parent.Engine, Database: parent.Database, ReadOnly: parent.ReadOnly, DB: db, Target: parent.Target,
+		ID: newID(), Engine: parent.Engine, Database: parent.Database, ReadOnly: parent.ReadOnly,
+		ConnectionID: parent.ConnectionID, DB: db, Target: parent.Target,
 	}
 	m.mu.Lock()
 	m.items[child.ID] = child

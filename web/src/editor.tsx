@@ -15,15 +15,29 @@ type Result = {
   messages?: string[];
   message?: string;
   position?: number;
+  queryId?: string;
   type: string;
 };
 
-export function QueryEditor({ config, sessionId }: { config: ClientConfig; sessionId: string }) {
+export function QueryEditor({
+  config,
+  sessionId,
+  connectionId,
+}: {
+  config: ClientConfig;
+  sessionId: string;
+  connectionId?: string;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const queryId = useRef("");
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState("");
   const [maxRows, setMaxRows] = useState(1000);
+  const [timeoutSec, setTimeoutSec] = useState(30);
+  const [running, setRunning] = useState(false);
+  const [history, setHistory] = useState<Array<{ sql: string; ok: boolean; error?: string }>>([]);
 
   useEffect(() => {
     if (!host.current) return;
@@ -42,31 +56,60 @@ export function QueryEditor({ config, sessionId }: { config: ClientConfig; sessi
     const sqlText = view.current?.state.doc.toString() || "";
     setError("");
     setResult(null);
-    const res = await fetch(`${config.origin}/sessions/${sessionId}/queries`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ sql: sqlText, maxRows }),
-    });
-    if (!res.ok || !res.body) {
-      setError(await res.text());
-      return;
-    }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (true) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() || "";
-      for (const line of lines) {
-        if (!line.trim()) continue;
-        const event = JSON.parse(line) as Result;
-        if (event.type === "error") setError(event.message || "Query failed");
-        if (event.type === "result") setResult(event);
+    setRunning(true);
+    abort.current = new AbortController();
+    try {
+      const res = await fetch(`${config.origin}/sessions/${sessionId}/queries`, {
+        method: "POST",
+        signal: abort.current.signal,
+        headers: { Authorization: `Bearer ${config.token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ sql: sqlText, maxRows, timeoutSec }),
+      });
+      if (!res.ok || !res.body) {
+        setError(await res.text());
+        return;
       }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        buffer += decoder.decode(chunk.value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const event = JSON.parse(line) as Result;
+          if (event.queryId) queryId.current = event.queryId;
+          if (event.type === "error") setError(event.message || "Query failed");
+          if (event.type === "canceled") setError("Canceled");
+          if (event.type === "result") setResult(event);
+        }
+      }
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") setError("Canceled");
+      else setError(err instanceof Error ? err.message : "Query failed");
+    } finally {
+      setRunning(false);
     }
+  }
+
+  async function cancel() {
+    abort.current?.abort();
+    if (!queryId.current) return;
+    await fetch(`${config.origin}/sessions/${sessionId}/queries/${queryId.current}/cancel`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+  }
+
+  async function showHistory() {
+    if (!connectionId) return;
+    const res = await fetch(`${config.origin}/connections/${connectionId}/history`, {
+      headers: { Authorization: `Bearer ${config.token}` },
+    });
+    setHistory(await res.json());
   }
 
   function format() {
@@ -74,6 +117,11 @@ export function QueryEditor({ config, sessionId }: { config: ClientConfig; sessi
     if (!editor) return;
     const next = formatSQL(editor.state.doc.toString());
     editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: next } });
+  }
+
+  function loadHistory(sqlText: string) {
+    view.current?.dispatch({ changes: { from: 0, to: view.current.state.doc.length, insert: sqlText } });
+    setHistory([]);
   }
 
   return (
@@ -86,13 +134,38 @@ export function QueryEditor({ config, sessionId }: { config: ClientConfig; sessi
           Format
         </button>
         <label className="meta">
+          Timeout
+          <select aria-label="Statement timeout" value={timeoutSec} onChange={(e) => setTimeoutSec(Number(e.target.value))}>
+            <option value={15}>15 seconds</option>
+            <option value={30}>30 seconds</option>
+            <option value={60}>60 seconds</option>
+            <option value={300}>5 minutes</option>
+            <option value={0}>No timeout</option>
+          </select>
+        </label>
+        <button className="btn" type="button" disabled={!running} onClick={() => void cancel()}>
+          Cancel
+        </button>
+        <label className="meta">
           Rows
           <select aria-label="Result cap" value={maxRows} onChange={(e) => setMaxRows(Number(e.target.value))}>
             <option value={1000}>1000</option>
             <option value={5000}>5000</option>
           </select>
         </label>
+        <button className="btn" type="button" onClick={() => void showHistory()}>
+          History
+        </button>
       </div>
+      {history.length > 0 && (
+        <div className="history">
+          {history.map((item, index) => (
+            <button key={index} type="button" onClick={() => loadHistory(item.sql)}>
+              {item.ok ? "ok" : item.error} · {item.sql}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="editor-host" ref={host} />
       {error && <div className="error-box">{error}</div>}
       {result && (

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 type Connection struct {
@@ -186,4 +187,70 @@ func newID() string {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
 	return "c" + hex.EncodeToString(b[:])
+}
+
+type HistoryEntry struct {
+	SQL        string    `json:"sql"`
+	At         time.Time `json:"at"`
+	Database   string    `json:"database"`
+	DurationMs int64     `json:"durationMs"`
+	OK         bool      `json:"ok"`
+	Error      string    `json:"error,omitempty"`
+}
+
+func (s *Store) AppendHistory(connectionID string, entry HistoryEntry) error {
+	if connectionID == "" {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	items, err := s.readHistory(connectionID)
+	if err != nil {
+		return err
+	}
+	items = append([]HistoryEntry{entry}, items...)
+	if len(items) > 100 {
+		items = items[:100]
+	}
+	return s.writeHistory(connectionID, items)
+}
+
+func (s *Store) History(connectionID string) ([]HistoryEntry, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.readHistory(connectionID)
+}
+
+func (s *Store) historyPath(connectionID string) string {
+	return filepath.Join(s.dir, "history", connectionID+".json")
+}
+
+func (s *Store) readHistory(connectionID string) ([]HistoryEntry, error) {
+	b, err := os.ReadFile(s.historyPath(connectionID))
+	if errors.Is(err, os.ErrNotExist) {
+		return []HistoryEntry{}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var items []HistoryEntry
+	if err := json.Unmarshal(b, &items); err != nil {
+		return nil, err
+	}
+	if items == nil {
+		items = []HistoryEntry{}
+	}
+	return items, nil
+}
+
+func (s *Store) writeHistory(connectionID string, items []HistoryEntry) error {
+	dir := filepath.Join(s.dir, "history")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(items, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(s.historyPath(connectionID), append(b, '\n'), 0o644)
 }

@@ -32,10 +32,8 @@ func (s *Server) openSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{
-		"sessionId": opened.ID,
-		"engine":    opened.Engine,
-		"database":  opened.Database,
-		"readOnly":  opened.ReadOnly,
+		"sessionId": opened.ID, "engine": opened.Engine, "database": opened.Database,
+		"readOnly": opened.ReadOnly, "connectionId": opened.ConnectionID,
 	})
 }
 

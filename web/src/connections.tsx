@@ -7,6 +7,7 @@ export type LiveConnection = {
   database: string;
   readOnly: boolean;
   name: string;
+  connectionId?: string;
 };
 
 export type Connection = {
@@ -120,7 +121,7 @@ export function Connections({ config, onConnect }: { config: ClientConfig; onCon
       password = "";
     }
     try {
-      const opened = await api<{ sessionId: string; engine: string; database: string; readOnly: boolean }>(
+      const opened = await api<{ sessionId: string; engine: string; database: string; readOnly: boolean; connectionId: string }>(
         config,
         "/sessions",
         { method: "POST", body: JSON.stringify({ connectionId: row.id, password, role: "explorer" }) },

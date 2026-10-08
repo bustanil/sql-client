@@ -10,6 +10,7 @@ export type LiveSession = {
   database: string;
   readOnly: boolean;
   name: string;
+  connectionId?: string;
 };
 
 export function Workspace({
@@ -56,7 +57,7 @@ export function Workspace({
         <Explorer config={config} session={session} onSession={onSession} onOpen={(target) => { setGrid(target); setQuerySession(null); }} />
       </aside>
       <section className="main-pane">
-        {querySession && <QueryEditor config={config} sessionId={querySession} />}
+        {querySession && <QueryEditor config={config} sessionId={querySession} connectionId={session.connectionId} />}
         {grid && !querySession && <DataGrid config={config} sessionId={session.sessionId} target={grid} />}
         <footer className="status">
           <span className="dot" />
