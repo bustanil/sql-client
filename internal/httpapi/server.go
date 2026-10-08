@@ -72,8 +72,12 @@ func (s *Server) authorized(r *http.Request) bool {
 	return strings.HasPrefix(h, prefix) && h[len(prefix):] == s.Token && s.Token != ""
 }
 
+type okResponse struct {
+	OK bool `json:"ok"`
+}
+
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, okResponse{OK: true})
 }
 
 func Listen(addr string) (net.Listener, error) {
@@ -88,7 +92,7 @@ func Listen(addr string) (net.Listener, error) {
 	return net.Listen("tcp", addr)
 }
 
-func writeJSON(w http.ResponseWriter, status int, v any) {
+func writeJSON[T interface{}](w http.ResponseWriter, status int, v T) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
@@ -98,7 +102,7 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func readJSON(r *http.Request, v any) error {
+func readJSON[T interface{}](r *http.Request, v *T) error {
 	dec := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 	if err := dec.Decode(v); err != nil && err != io.EOF {

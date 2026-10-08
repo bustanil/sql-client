@@ -12,6 +12,11 @@ import (
 	"github.com/bustanil/sql-client/internal/store"
 )
 
+type readyLine struct {
+	Ready bool `json:"ready"`
+	Port  int  `json:"port"`
+}
+
 func main() {
 	token := os.Getenv("SQLC_TOKEN")
 	if token == "" {
@@ -39,7 +44,7 @@ func main() {
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
 	enc := json.NewEncoder(os.Stdout)
-	if err := enc.Encode(map[string]any{"ready": true, "port": port}); err != nil {
+	if err := enc.Encode(readyLine{Ready: true, Port: port}); err != nil {
 		log.Fatal(err)
 	}
 	_ = os.Stdout.Sync()

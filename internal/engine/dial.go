@@ -125,6 +125,7 @@ func postgresDSN(t Target) string {
 		q.Set("sslmode", "disable")
 	}
 	q.Set("connect_timeout", "10")
+	q.Set("search_path", "public")
 	u.RawQuery = q.Encode()
 	return u.String()
 }

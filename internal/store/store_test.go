@@ -31,11 +31,11 @@ func TestCreateRejectsDuplicateNameAndOmitsSecrets(t *testing.T) {
 	if strings.Contains(string(raw), "password") {
 		t.Fatalf("connection file contains a password field: %s", raw)
 	}
-	var decoded []map[string]any
+	var decoded []Connection
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded[0]["id"] != first.ID {
-		t.Fatalf("id %v", decoded[0]["id"])
+	if decoded[0].ID != first.ID {
+		t.Fatalf("id %s", decoded[0].ID)
 	}
 }

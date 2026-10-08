@@ -13,6 +13,14 @@ type sessionBody struct {
 	Database     string `json:"database"`
 }
 
+type sessionView struct {
+	SessionID    string `json:"sessionId"`
+	Engine       string `json:"engine"`
+	Database     string `json:"database"`
+	ReadOnly     bool   `json:"readOnly"`
+	ConnectionID string `json:"connectionId,omitempty"`
+}
+
 func (s *Server) openSession(w http.ResponseWriter, r *http.Request) {
 	var body sessionBody
 	if err := readJSON(r, &body); err != nil {
@@ -31,9 +39,9 @@ func (s *Server) openSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"sessionId": opened.ID, "engine": opened.Engine, "database": opened.Database,
-		"readOnly": opened.ReadOnly, "connectionId": opened.ConnectionID,
+	writeJSON(w, http.StatusCreated, sessionView{
+		SessionID: opened.ID, Engine: opened.Engine, Database: opened.Database,
+		ReadOnly: opened.ReadOnly, ConnectionID: opened.ConnectionID,
 	})
 }
 

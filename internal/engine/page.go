@@ -10,7 +10,7 @@ import (
 type Page struct {
 	SQL     string   `json:"sql"`
 	Columns []string `json:"columns"`
-	Rows    [][]any  `json:"rows"`
+	Rows    [][]Cell `json:"rows"`
 	Window  Window   `json:"window"`
 }
 
@@ -49,33 +49,33 @@ func PageQuery(ctx context.Context, db *sql.DB, req PageRequest) (Page, error) {
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
+	names, err := relationColumns(ctx, db, req)
+	if err != nil {
+		return Page{}, err
+	}
 	cols := req.Columns
 	if len(cols) == 0 {
-		loaded, err := Columns(ctx, db, req.Engine, schemaOf(req), req.Relation)
-		if err != nil {
-			return Page{}, err
-		}
-		for _, col := range loaded {
-			cols = append(cols, col.Name)
-		}
+		cols = names
 	}
-	if len(cols) == 0 {
-		return Page{}, fmt.Errorf("the relation has no columns")
+	for _, name := range cols {
+		if !contains(names, name) {
+			return Page{}, fmt.Errorf("unknown column %s", name)
+		}
 	}
 	quoted := make([]string, len(cols))
 	for i, name := range cols {
 		quoted[i] = Quote(req.Engine, name)
 	}
-	statement, args, err := buildSelect(req, quoted, cols)
+	statement, args, err := buildSelect(req, quoted, names)
 	if err != nil {
 		return Page{}, err
 	}
-	rows, err := db.QueryContext(ctx, statement, args...)
+	rows, err := db.QueryContext(ctx, statement, queryArgs(args)...)
 	if err != nil {
 		return Page{}, err
 	}
 	defer rows.Close()
-	scanned, err := scanPage(rows, len(cols))
+	scanned, _, err := scanCells(rows, len(cols), 0)
 	if err != nil {
 		return Page{}, err
 	}
@@ -93,19 +93,38 @@ func schemaOf(req PageRequest) string {
 	return req.Schema
 }
 
+func relationColumns(ctx context.Context, db *sql.DB, req PageRequest) ([]string, error) {
+	loaded, err := Columns(ctx, db, req.Engine, schemaOf(req), req.Relation)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(loaded))
+	for _, col := range loaded {
+		names = append(names, col.Name)
+	}
+	if len(names) == 0 {
+		return nil, fmt.Errorf("the relation has no columns")
+	}
+	return names, nil
+}
+
 func Count(ctx context.Context, db *sql.DB, req PageRequest) (int, error) {
 	req.Sort = nil
 	req.Limit = 0
-	statement, args, err := buildSelect(req, []string{"COUNT(*)"}, req.Columns)
+	names, err := relationColumns(ctx, db, req)
+	if err != nil {
+		return 0, err
+	}
+	statement, args, err := buildSelect(req, []string{"COUNT(*)"}, names)
 	if err != nil {
 		return 0, err
 	}
 	var n int
-	err = db.QueryRowContext(ctx, statement, args...).Scan(&n)
+	err = db.QueryRowContext(ctx, statement, queryArgs(args)...).Scan(&n)
 	return n, err
 }
 
-func buildSelect(req PageRequest, selectList []string, allowed []string) (string, []any, error) {
+func buildSelect(req PageRequest, selectList []string, allowed []string) (string, []string, error) {
 	from := Quote(req.Engine, req.Relation)
 	if req.Engine == "PostgreSQL" && req.Schema != "" {
 		from = Quote(req.Engine, req.Schema) + "." + from
@@ -128,9 +147,9 @@ func buildSelect(req PageRequest, selectList []string, allowed []string) (string
 	return statement, args, nil
 }
 
-func whereClause(req PageRequest, allowed []string) (string, []any, error) {
+func whereClause(req PageRequest, allowed []string) (string, []string, error) {
 	parts := []string{}
-	args := []any{}
+	args := []string{}
 	for _, filter := range req.Filters {
 		if !contains(allowed, filter.Column) {
 			continue
@@ -141,17 +160,9 @@ func whereClause(req PageRequest, allowed []string) (string, []any, error) {
 			parts = append(parts, col+" IS NULL")
 		case "notempty":
 			parts = append(parts, col+" IS NOT NULL")
-		case "eq", "neq", "gt", "lt", "contains":
+		case "eq", "neq", "gt", "gte", "lt", "lte", "contains", "like", "ilike":
 			args = append(args, filterValue(filter))
-			op := map[string]string{"eq": "=", "neq": "<>", "gt": ">", "lt": "<"}[filter.Op]
-			if filter.Op == "contains" {
-				if req.Engine == "PostgreSQL" {
-					op = "ILIKE"
-				} else {
-					op = "LIKE"
-				}
-			}
-			parts = append(parts, fmt.Sprintf("%s %s %s", col, op, placeholder(req.Engine, len(args))))
+			parts = append(parts, compareSQL(req.Engine, col, filter.Op, placeholder(req.Engine, len(args))))
 		default:
 			return "", nil, fmt.Errorf("unknown filter %s", filter.Op)
 		}
@@ -167,6 +178,35 @@ func filterValue(filter Filter) string {
 		return "%" + filter.Value + "%"
 	}
 	return filter.Value
+}
+
+func compareSQL(engineName, column, op, placeholder string) string {
+	switch op {
+	case "eq":
+		return column + " = " + placeholder
+	case "neq":
+		return column + " <> " + placeholder
+	case "gt":
+		return column + " > " + placeholder
+	case "gte":
+		return column + " >= " + placeholder
+	case "lt":
+		return column + " < " + placeholder
+	case "lte":
+		return column + " <= " + placeholder
+	case "contains", "ilike":
+		if engineName == "PostgreSQL" {
+			return column + " ILIKE " + placeholder
+		}
+		return "LOWER(" + column + ") LIKE LOWER(" + placeholder + ")"
+	case "like":
+		if engineName == "PostgreSQL" {
+			return column + " LIKE " + placeholder
+		}
+		return "BINARY " + column + " LIKE " + placeholder
+	default:
+		return column + " = " + placeholder
+	}
 }
 
 func placeholder(engineName string, n int) string {
@@ -185,23 +225,10 @@ func contains(list []string, name string) bool {
 	return false
 }
 
-func scanPage(rows *sql.Rows, width int) ([][]any, error) {
-	out := [][]any{}
-	for rows.Next() {
-		raw := make([]any, width)
-		ptrs := make([]any, width)
-		for i := range raw {
-			ptrs[i] = &raw[i]
-		}
-		if err := rows.Scan(ptrs...); err != nil {
-			return nil, err
-		}
-		for i, value := range raw {
-			if b, ok := value.([]byte); ok {
-				raw[i] = string(b)
-			}
-		}
-		out = append(out, raw)
+func queryArgs(values []string) []interface{} {
+	bound := make([]interface{}, len(values))
+	for i, value := range values {
+		bound[i] = value
 	}
-	return out, rows.Err()
+	return bound
 }

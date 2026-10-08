@@ -19,9 +19,9 @@ func (s *Server) spawnSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusCreated, map[string]any{
-		"sessionId": opened.ID, "engine": opened.Engine, "database": opened.Database,
-		"readOnly": opened.ReadOnly, "connectionId": opened.ConnectionID,
+	writeJSON(w, http.StatusCreated, sessionView{
+		SessionID: opened.ID, Engine: opened.Engine, Database: opened.Database,
+		ReadOnly: opened.ReadOnly, ConnectionID: opened.ConnectionID,
 	})
 }
 
@@ -74,15 +74,15 @@ func (s *Server) runQuery(w http.ResponseWriter, r *http.Request) {
 			flush(w)
 			return
 		}
-		_ = enc.Encode(map[string]any{"type": "error", "message": err.Error(), "position": engine.ErrorPosition(err)})
+		_ = enc.Encode(queryFailed{Type: "error", Message: err.Error(), Position: engine.ErrorPosition(err)})
 		flush(w)
 		return
 	}
 	_ = s.Store.AppendHistory(sess.ConnectionID, entry)
-	_ = enc.Encode(map[string]any{
-		"type": "result", "columns": result.Columns, "rows": result.Rows,
-		"rowsAffected": result.RowsAffected, "truncated": result.Truncated,
-		"elapsedMs": time.Since(started).Milliseconds(), "messages": messages,
+	_ = enc.Encode(queryDone{
+		Type: "result", Columns: result.Columns, Rows: result.Rows,
+		RowsAffected: result.RowsAffected, Truncated: result.Truncated,
+		ElapsedMs: time.Since(started).Milliseconds(), Messages: messages,
 	})
 	flush(w)
 }
@@ -101,6 +101,22 @@ func (s *Server) history(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+type queryFailed struct {
+	Type     string `json:"type"`
+	Message  string `json:"message"`
+	Position int    `json:"position"`
+}
+
+type queryDone struct {
+	Type         string          `json:"type"`
+	Columns      []string        `json:"columns"`
+	Rows         [][]engine.Cell `json:"rows"`
+	RowsAffected int64           `json:"rowsAffected"`
+	Truncated    bool            `json:"truncated"`
+	ElapsedMs    int64           `json:"elapsedMs"`
+	Messages     []string        `json:"messages"`
 }
 
 func flush(w http.ResponseWriter) {

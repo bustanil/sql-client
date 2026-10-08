@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/csv"
-	"fmt"
 )
 
 func ExportCSV(ctx context.Context, db *sql.DB, req PageRequest) (string, bool, error) {
@@ -23,10 +22,10 @@ func ExportCSV(ctx context.Context, db *sql.DB, req PageRequest) (string, bool, 
 	for _, row := range page.Rows {
 		record := make([]string, len(row))
 		for i, cell := range row {
-			if cell == nil {
+			if cell.Null() {
 				continue
 			}
-			record[i] = fmt.Sprint(cell)
+			record[i] = cell.Text()
 		}
 		if err := writer.Write(record); err != nil {
 			return "", false, err

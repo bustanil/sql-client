@@ -16,6 +16,9 @@ func TestPostgresDSNEscapesPasswordAndTLS(t *testing.T) {
 	if !strings.Contains(dsn, "/postgres") {
 		t.Fatalf("default database: %s", dsn)
 	}
+	if !strings.Contains(dsn, "search_path=public") {
+		t.Fatalf("search_path: %s", dsn)
+	}
 	if strings.Contains(dsn, "p@ss word") {
 		t.Fatalf("password was not escaped: %s", dsn)
 	}

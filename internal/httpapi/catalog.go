@@ -22,8 +22,8 @@ func (s *Server) switchDatabase(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"sessionId": opened.ID, "engine": opened.Engine, "database": opened.Database, "readOnly": opened.ReadOnly,
+	writeJSON(w, http.StatusOK, sessionView{
+		SessionID: opened.ID, Engine: opened.Engine, Database: opened.Database, ReadOnly: opened.ReadOnly,
 	})
 }
 
@@ -149,5 +149,7 @@ func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"tables": tables})
+	writeJSON(w, http.StatusOK, struct {
+		Tables map[string][]string `json:"tables"`
+	}{Tables: tables})
 }

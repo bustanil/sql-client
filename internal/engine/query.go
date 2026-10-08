@@ -14,7 +14,7 @@ import (
 
 type QueryResult struct {
 	Columns      []string
-	Rows         [][]any
+	Rows         [][]Cell
 	RowsAffected int64
 	Truncated    bool
 	Message      string
@@ -58,34 +58,9 @@ func runOne(ctx context.Context, db *sql.DB, engineName, text string, maxRows in
 		if err != nil {
 			return QueryResult{}, err
 		}
-		truncated := false
-		scanned := [][]any{}
-		for rows.Next() {
-			if len(scanned) > maxRows {
-				truncated = true
-				break
-			}
-			raw := make([]any, len(names))
-			ptrs := make([]any, len(names))
-			for i := range raw {
-				ptrs[i] = &raw[i]
-			}
-			if err := rows.Scan(ptrs...); err != nil {
-				return QueryResult{}, err
-			}
-			for i, value := range raw {
-				if b, ok := value.([]byte); ok {
-					raw[i] = string(b)
-				}
-			}
-			scanned = append(scanned, raw)
-		}
-		if err := rows.Err(); err != nil {
+		scanned, truncated, err := scanCells(rows, len(names), maxRows)
+		if err != nil {
 			return QueryResult{}, err
-		}
-		if len(scanned) > maxRows {
-			scanned = scanned[:maxRows]
-			truncated = true
 		}
 		return QueryResult{Columns: names, Rows: scanned, Truncated: truncated, Message: fmt.Sprintf("%d rows", len(scanned))}, nil
 	}
