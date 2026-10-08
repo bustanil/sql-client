@@ -65,6 +65,8 @@ export function QueryEditor({
 
   async function run() {
     const sqlText = view.current?.state.doc.toString() || "";
+    const verb = sqlText.replace(/^\s*--.*$/gm, "").trim().split(/\s+/)[0]?.toUpperCase();
+    if (verb && ["DROP", "TRUNCATE", "ALTER"].includes(verb) && !window.confirm(`${verb} will run. Continue?`)) return;
     setError("");
     setResult(null);
     setRunning(true);
