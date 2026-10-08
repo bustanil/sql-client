@@ -47,6 +47,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("POST /sessions/{id}/spawn", s.spawnSession)
 	s.mux.HandleFunc("POST /sessions/{id}/queries", s.runQuery)
 	s.mux.HandleFunc("POST /sessions/{id}/queries/{queryId}/cancel", s.cancelQuery)
+	s.mux.HandleFunc("POST /sessions/{id}/ddl/preview", s.previewDDL)
+	s.mux.HandleFunc("POST /sessions/{id}/execute", s.executeSQL)
 	s.mux.HandleFunc("GET /connections/{id}/history", s.history)
 }
 

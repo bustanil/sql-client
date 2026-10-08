@@ -22,11 +22,13 @@ export function Explorer({
   session,
   onSession,
   onOpen,
+  onCreate,
 }: {
   config: ClientConfig;
   session: LiveSession;
   onSession: (next: LiveSession) => void;
   onOpen: (target: { database?: string; schema?: string; relation: string }) => void;
+  onCreate: (kind: "database" | "table", schema?: string) => void;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["conn"]));
@@ -147,6 +149,12 @@ export function Explorer({
         <button className="btn" type="button" onClick={() => void refresh()}>
           Refresh
         </button>
+        {!session.readOnly && <button className="btn" type="button" onClick={() => onCreate("database")}>Create database</button>}
+        {!session.readOnly && (selectedRow?.kind === "schema" || selectedRow?.kind === "database") && (
+          <button className="btn" type="button" onClick={() => onCreate("table", selectedRow.schema || "public")}>
+            Create table
+          </button>
+        )}
         {(selectedRow?.kind === "table" || selectedRow?.kind === "view") && (
           <button className="btn" type="button" onClick={() => onOpen({ database: selectedRow.database, schema: selectedRow.schema, relation: selectedRow.label })}>
             Open data
