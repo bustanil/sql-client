@@ -1,13 +1,45 @@
 {
   "name": "sql-client",
+  "version": "0.1.0",
+  "description": "Local SQL client for PostgreSQL and MySQL",
+  "author": "Bustanil Arifin",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "dev:ui": "node scripts/dev-ui.mjs",
     "dev": "node scripts/dev.mjs",
-    "test": "go test ./..."
+    "test": "go test ./...",
+    "pack": "go build -o dist/sql-client-server ./cmd/server && npm --prefix web run build && electron-builder --mac dir"
+  },
+  "build": {
+    "appId": "com.bustanil.sqlclient",
+    "productName": "SQL Client",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "dist/sql-client-server",
+        "to": "sql-client-server"
+      },
+      {
+        "from": "web/dist",
+        "to": "web"
+      }
+    ],
+    "mac": {
+      "identity": null,
+      "target": [
+        "dir"
+      ]
+    }
   },
   "devDependencies": {
-    "electron": "^35.7.5"
+    "electron": "^35.7.5",
+    "electron-builder": "^26.15.3"
   }
 }

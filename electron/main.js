@@ -26,7 +26,7 @@ function writeSecrets(all) {
 
 function startGo() {
   const token = crypto.randomBytes(32).toString("hex");
-  const bin = process.env.SQLC_BIN;
+  const bin = process.env.SQLC_BIN || (app.isPackaged ? path.join(process.resourcesPath, "sql-client-server") : "");
   const cmd = bin || "go";
   const args = bin ? [] : ["run", "./cmd/server"];
   goProc = spawn(cmd, args, {
@@ -98,7 +98,11 @@ app.whenReady().then(async () => {
       nodeIntegration: false,
     },
   });
-  await win.loadURL(process.env.SQLC_WEB || "http://127.0.0.1:5173");
+  if (app.isPackaged) {
+    await win.loadFile(path.join(process.resourcesPath, "web", "index.html"));
+  } else {
+    await win.loadURL(process.env.SQLC_WEB || "http://127.0.0.1:5173");
+  }
 });
 
 app.on("before-quit", () => {
