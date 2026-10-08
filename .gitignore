@@ -1,0 +1,9 @@
+node_modules/
+dist/
+web/dist/
+release/
+*.exe
+.DS_Store
+.env
+.env.local
+coverage/

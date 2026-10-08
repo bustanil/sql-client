@@ -1,0 +1,13 @@
+{
+  "name": "sql-client",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "dev:ui": "node scripts/dev-ui.mjs",
+    "dev": "node scripts/dev.mjs",
+    "test": "go test ./..."
+  },
+  "devDependencies": {
+    "electron": "^35.7.5"
+  }
+}
