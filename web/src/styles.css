@@ -109,4 +109,31 @@ h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
 .test-line.bad { color: #8f2d2a; }
 .btn-danger { background: #8f2d2a; color: white; border-color: #8f2d2a; }
 h2 { font-size: 16px; margin: 0 0 4px; }
+.workspace { flex: 1; min-height: 0; display: flex; }
+.sidebar {
+  width: 300px;
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.side-head { display: flex; justify-content: space-between; padding: 10px; align-items: flex-start; }
+.side-title { font-weight: 650; }
+.main-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.status {
+  margin-top: auto;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border-top: 1px solid var(--line);
+  background: var(--side);
+  color: var(--muted);
+  font-size: 12px;
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; background: #1d6b43; display: inline-block; }
+.window { min-height: 0; }
+.list { flex: 1; overflow: auto; }
+
 

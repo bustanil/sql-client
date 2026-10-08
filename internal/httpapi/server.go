@@ -8,17 +8,19 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/bustanil/sql-client/internal/session"
 	"github.com/bustanil/sql-client/internal/store"
 )
 
 type Server struct {
-	Token string
-	Store *store.Store
-	mux   *http.ServeMux
+	Token    string
+	Store    *store.Store
+	Sessions *session.Manager
+	mux      *http.ServeMux
 }
 
 func New(token string, st *store.Store) *Server {
-	s := &Server{Token: token, Store: st, mux: http.NewServeMux()}
+	s := &Server{Token: token, Store: st, Sessions: session.NewManager(), mux: http.NewServeMux()}
 	s.routes()
 	return s
 }
@@ -30,6 +32,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("PATCH /connections/{id}", s.updateConnection)
 	s.mux.HandleFunc("DELETE /connections/{id}", s.deleteConnection)
 	s.mux.HandleFunc("POST /connections/test", s.testConnection)
+	s.mux.HandleFunc("POST /sessions", s.openSession)
+	s.mux.HandleFunc("DELETE /sessions/{id}", s.closeSession)
 }
 
 func (s *Server) Handler() http.Handler {

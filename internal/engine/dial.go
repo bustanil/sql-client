@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/tls"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"time"
 
 	"github.com/go-sql-driver/mysql"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -45,6 +47,38 @@ func Ping(ctx context.Context, t Target) error {
 	db.SetMaxOpenConns(1)
 	var one int
 	return db.QueryRowContext(ctx, "SELECT 1").Scan(&one)
+}
+
+func Open(ctx context.Context, t Target) (*sql.DB, error) {
+	ctx, cancel := context.WithTimeout(ctx, dialTimeout)
+	defer cancel()
+	db, err := openAndPing(ctx, t)
+	if err == nil {
+		return db, nil
+	}
+	if t.Engine == "PostgreSQL" && t.Database == "" && invalidCatalog(err) {
+		t.Database = t.User
+		return openAndPing(ctx, t)
+	}
+	return nil, err
+}
+
+func openAndPing(ctx context.Context, t Target) (*sql.DB, error) {
+	driver, dsn, err := dsnFor(t)
+	if err != nil {
+		return nil, err
+	}
+	db, err := sql.Open(driver, dsn)
+	if err != nil {
+		return nil, err
+	}
+	db.SetMaxOpenConns(1)
+	var one int
+	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
+		db.Close()
+		return nil, err
+	}
+	return db, nil
 }
 
 func dsnFor(t Target) (driver, dsn string, err error) {
@@ -105,4 +139,9 @@ func mysqlDSN(t Target) (string, error) {
 		cfg.TLSConfig = "false"
 	}
 	return cfg.FormatDSN(), nil
+}
+
+func invalidCatalog(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "3D000"
 }

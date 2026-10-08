@@ -1,6 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, type ClientConfig } from "./api";
 
+export type LiveConnection = {
+  sessionId: string;
+  engine: string;
+  database: string;
+  readOnly: boolean;
+  name: string;
+};
+
 export type Connection = {
   id: string;
   name: string;
@@ -36,7 +44,7 @@ async function keychainDelete(id: string) {
   await window.sqlc?.keychain?.delete(id);
 }
 
-export function Connections({ config }: { config: ClientConfig }) {
+export function Connections({ config, onConnect }: { config: ClientConfig; onConnect: (session: LiveConnection) => void }) {
   const [rows, setRows] = useState<Connection[]>([]);
   const [error, setError] = useState("");
   const [form, setForm] = useState<Connection | null>(null);
@@ -103,6 +111,26 @@ export function Connections({ config }: { config: ClientConfig }) {
     await reload();
   }
 
+  async function connect(row: Connection) {
+    setError("");
+    let password = "";
+    try {
+      password = (await window.sqlc?.keychain?.get(row.id)) || "";
+    } catch {
+      password = "";
+    }
+    try {
+      const opened = await api<{ sessionId: string; engine: string; database: string; readOnly: boolean }>(
+        config,
+        "/sessions",
+        { method: "POST", body: JSON.stringify({ connectionId: row.id, password, role: "explorer" }) },
+      );
+      onConnect({ ...opened, name: row.name });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Connect failed");
+    }
+  }
+
   async function onDelete() {
     if (!deleting) return;
     await api(config, `/connections/${deleting.id}`, { method: "DELETE" });
@@ -149,7 +177,11 @@ export function Connections({ config }: { config: ClientConfig }) {
               <button className="btn btn-quiet" type="button" onClick={() => setDeleting(row)}>
                 Delete
               </button>
-              <button className="btn btn-primary" type="button" disabled>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void connect(row)}
+              >
                 Connect
               </button>
             </div>
