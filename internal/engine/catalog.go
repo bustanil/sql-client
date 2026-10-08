@@ -159,6 +159,35 @@ func ForeignKeys(ctx context.Context, db *sql.DB, engineName, schema, table stri
 	return scanStrings(rows)
 }
 
+func Completion(ctx context.Context, db *sql.DB, engineName string) (map[string][]string, error) {
+	var rows *sql.Rows
+	var err error
+	if engineName == "MySQL" {
+		rows, err = db.QueryContext(ctx, `
+			SELECT table_name, column_name FROM information_schema.columns
+			WHERE table_schema = DATABASE()
+			ORDER BY table_name, ordinal_position`)
+	} else {
+		rows, err = db.QueryContext(ctx, `
+			SELECT table_name, column_name FROM information_schema.columns
+			WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+			ORDER BY table_name, ordinal_position`)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var table, column string
+		if err := rows.Scan(&table, &column); err != nil {
+			return nil, err
+		}
+		out[table] = append(out[table], column)
+	}
+	return out, rows.Err()
+}
+
 func scanStrings(rows *sql.Rows) ([]string, error) {
 	out := []string{}
 	for rows.Next() {

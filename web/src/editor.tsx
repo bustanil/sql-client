@@ -3,7 +3,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { sql } from "@codemirror/lang-sql";
 import { defaultKeymap } from "@codemirror/commands";
-import type { ClientConfig } from "./api";
+import { api, type ClientConfig } from "./api";
 import { formatSQL } from "./format";
 import { rowsToCSV, saveCSV } from "./csv";
 
@@ -42,16 +42,26 @@ export function QueryEditor({
 
   useEffect(() => {
     if (!host.current) return;
-    const editor = new EditorView({
-      state: EditorState.create({
-        doc: "select 1;",
-        extensions: [sql(), keymap.of(defaultKeymap), EditorView.lineWrapping],
-      }),
-      parent: host.current,
-    });
-    view.current = editor;
-    return () => editor.destroy();
-  }, []);
+    let editor: EditorView | null = null;
+    let cancelled = false;
+    api<{ tables: Record<string, string[]> }>(config, `/sessions/${sessionId}/complete`)
+      .catch(() => ({ tables: {} }))
+      .then((data) => {
+        if (cancelled || !host.current) return;
+        editor = new EditorView({
+          state: EditorState.create({
+            doc: "select 1;",
+            extensions: [sql({ schema: data.tables }), keymap.of(defaultKeymap), EditorView.lineWrapping],
+          }),
+          parent: host.current,
+        });
+        view.current = editor;
+      });
+    return () => {
+      cancelled = true;
+      editor?.destroy();
+    };
+  }, [config, sessionId]);
 
   async function run() {
     const sqlText = view.current?.state.doc.toString() || "";

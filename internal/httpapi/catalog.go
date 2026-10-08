@@ -137,3 +137,17 @@ func (s *Server) namedChildren(w http.ResponseWriter, r *http.Request, load func
 	}
 	writeJSON(w, http.StatusOK, names)
 }
+
+func (s *Server) complete(w http.ResponseWriter, r *http.Request) {
+	sess, ok := s.Sessions.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	tables, err := engine.Completion(r.Context(), sess.DB, sess.Engine)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tables": tables})
+}
