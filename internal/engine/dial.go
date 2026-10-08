@@ -30,6 +30,7 @@ type Target struct {
 	Password string
 	Database string
 	TLS      string
+	ReadOnly bool
 }
 
 func Ping(ctx context.Context, t Target) error {
@@ -77,6 +78,16 @@ func openAndPing(ctx context.Context, t Target) (*sql.DB, error) {
 	if err := db.QueryRowContext(ctx, "SELECT 1").Scan(&one); err != nil {
 		db.Close()
 		return nil, err
+	}
+	if t.ReadOnly {
+		stmt := "SET SESSION TRANSACTION READ ONLY"
+		if t.Engine == "PostgreSQL" {
+			stmt = "SET default_transaction_read_only = on"
+		}
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 	return db, nil
 }

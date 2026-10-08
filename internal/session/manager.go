@@ -40,6 +40,7 @@ func (m *Manager) Open(ctx context.Context, req OpenRequest) (*Session, error) {
 	target := engine.Target{
 		Engine: req.Connection.Engine, Host: req.Connection.Host, Port: req.Connection.Port,
 		User: req.Connection.User, Password: req.Password, Database: req.Connection.Database, TLS: req.Connection.TLS,
+		ReadOnly: req.Connection.ReadOnly,
 	}
 	if req.Database != "" {
 		target.Database = req.Database

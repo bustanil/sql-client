@@ -40,6 +40,10 @@ func (s *Server) runQuery(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "sql is required")
 		return
 	}
+	if sess.ReadOnly && !engine.IsRead(body.SQL) {
+		writeError(w, http.StatusForbidden, "Read-only connection. This statement was rejected before it reached the server.")
+		return
+	}
 	ctx, stop := context.WithCancel(r.Context())
 	defer stop()
 	if body.TimeoutSec > 0 {

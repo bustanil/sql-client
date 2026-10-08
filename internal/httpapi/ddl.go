@@ -39,6 +39,10 @@ func (s *Server) executeSQL(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "sql is required")
 		return
 	}
+	if sess.ReadOnly && !engine.IsRead(body.SQL) {
+		writeError(w, http.StatusForbidden, "Read-only connection. This statement was rejected before it reached the server.")
+		return
+	}
 	if _, err := sess.DB.ExecContext(r.Context(), body.SQL); err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return

@@ -101,6 +101,23 @@ func runOne(ctx context.Context, db *sql.DB, engineName, text string, maxRows in
 	return QueryResult{RowsAffected: n, Message: msg}, nil
 }
 
+func IsRead(text string) bool {
+	switch firstWord(text) {
+	case "select", "show", "explain", "values":
+		return true
+	case "with":
+		lower := strings.ToLower(stripComments(text))
+		for _, word := range []string{"insert", "update", "delete", "drop", "alter", "truncate", "create"} {
+			if strings.Contains(lower, word) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
 func rowReturning(text string) bool {
 	word := firstWord(text)
 	switch word {
