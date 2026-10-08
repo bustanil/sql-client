@@ -21,10 +21,12 @@ export function Explorer({
   config,
   session,
   onSession,
+  onOpen,
 }: {
   config: ClientConfig;
   session: LiveSession;
   onSession: (next: LiveSession) => void;
+  onOpen: (target: { database?: string; schema?: string; relation: string }) => void;
 }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["conn"]));
@@ -32,6 +34,7 @@ export function Explorer({
   const [filter, setFilter] = useState("");
   const [system, setSystem] = useState(false);
   const [selected, setSelected] = useState("conn");
+  const [menu, setMenu] = useState<{ x: number; y: number; item: Row } | null>(null);
   const [error, setError] = useState("");
 
   async function loadDatabases() {
@@ -113,7 +116,23 @@ export function Explorer({
             className="tree-row"
             style={{ paddingLeft: 4 + item.depth * 14 }}
             aria-selected={item.id === selected}
-            onClick={() => void toggle(item)}
+            onClick={(event) => {
+              setSelected(item.id);
+              const target = event.target as HTMLElement;
+              if (item.expandable && target.closest(".chevron")) void toggle(item);
+            }}
+            onDoubleClick={() => {
+              if (item.kind === "table" || item.kind === "view") {
+                onOpen({ database: item.database, schema: item.schema, relation: item.label });
+                return;
+              }
+              if (item.expandable) void toggle(item);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setSelected(item.id);
+              setMenu({ x: event.clientX, y: event.clientY, item });
+            }}
           >
             <span className={item.expandable ? "chevron has" + (expanded.has(item.id) ? " open" : "") : "chevron"} />
             <span className="tree-label">{item.label}</span>
@@ -128,7 +147,24 @@ export function Explorer({
         <button className="btn" type="button" onClick={() => void refresh()}>
           Refresh
         </button>
+        {(selectedRow?.kind === "table" || selectedRow?.kind === "view") && (
+          <button className="btn" type="button" onClick={() => onOpen({ database: selectedRow.database, schema: selectedRow.schema, relation: selectedRow.label })}>
+            Open data
+          </button>
+        )}
       </div>
+      {menu && (
+        <div className="menu" style={{ left: menu.x, top: menu.y }} role="menu">
+          {(menu.item.kind === "table" || menu.item.kind === "view") && (
+            <button type="button" onClick={() => { onOpen({ database: menu.item.database, schema: menu.item.schema, relation: menu.item.label }); setMenu(null); }}>
+              Open data
+            </button>
+          )}
+          <button type="button" onClick={() => { void refresh(); setMenu(null); }}>
+            Refresh
+          </button>
+        </div>
+      )}
     </>
   );
 }
