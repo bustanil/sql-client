@@ -1,0 +1,83 @@
+name: Build macOS DMG
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Apple Silicon installer
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '26.8.1'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            web/package-lock.json
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.1'
+          cache: true
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm --prefix web ci
+
+      - name: Build app and disk image
+        run: npm run pack:dmg
+
+      - name: Check backend
+        run: |
+          go test -race ./...
+          go vet ./...
+
+      - name: Verify app signatures
+        run: |
+          app='release/mac-arm64/SQL Client.app'
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --verify --strict --verbose=2 "$app/Contents/Resources/sql-client-server"
+
+      - name: Verify disk image and create checksum
+        working-directory: release
+        run: |
+          hdiutil verify sql-client-arm64.dmg
+          mount_dir=$(mktemp -d)
+          trap 'hdiutil detach "$mount_dir"; rmdir "$mount_dir"' EXIT
+          hdiutil attach -readonly -nobrowse -mountpoint "$mount_dir" sql-client-arm64.dmg
+          codesign --verify --deep --strict --verbose=2 "$mount_dir/SQL Client.app"
+          shasum -a 256 sql-client-arm64.dmg > sql-client-arm64.dmg.sha256
+
+      - name: Upload installer
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sql-client-macos-arm64
+          path: |
+            release/sql-client-arm64.dmg
+            release/sql-client-arm64.dmg.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
