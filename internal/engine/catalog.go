@@ -113,6 +113,52 @@ func Columns(ctx context.Context, db *sql.DB, engineName, schema, table string) 
 	return scanColumns(rows)
 }
 
+func Indexes(ctx context.Context, db *sql.DB, engineName, schema, table string) ([]string, error) {
+	if engineName == "MySQL" {
+		rows, err := db.QueryContext(ctx, `
+			SELECT DISTINCT index_name FROM information_schema.statistics
+			WHERE table_schema = ? AND table_name = ? AND index_name <> 'PRIMARY'
+			ORDER BY index_name`, schema, table)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanStrings(rows)
+	}
+	rows, err := db.QueryContext(ctx, `SELECT indexname FROM pg_indexes WHERE schemaname = $1 AND tablename = $2 AND indexname NOT LIKE '%_pkey' ORDER BY indexname`, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanStrings(rows)
+}
+
+func ForeignKeys(ctx context.Context, db *sql.DB, engineName, schema, table string) ([]string, error) {
+	if engineName == "MySQL" {
+		rows, err := db.QueryContext(ctx, `
+			SELECT DISTINCT constraint_name FROM information_schema.key_column_usage
+			WHERE table_schema = ? AND table_name = ? AND referenced_table_name IS NOT NULL
+			ORDER BY constraint_name`, schema, table)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		return scanStrings(rows)
+	}
+	rows, err := db.QueryContext(ctx, `
+		SELECT con.conname
+		FROM pg_constraint con
+		JOIN pg_class c ON c.oid = con.conrelid
+		JOIN pg_namespace n ON n.oid = c.relnamespace
+		WHERE con.contype = 'f' AND n.nspname = $1 AND c.relname = $2
+		ORDER BY con.conname`, schema, table)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanStrings(rows)
+}
+
 func scanStrings(rows *sql.Rows) ([]string, error) {
 	out := []string{}
 	for rows.Next() {

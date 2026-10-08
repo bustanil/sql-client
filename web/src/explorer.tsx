@@ -102,6 +102,25 @@ export function Explorer({
     setCache({ conn: items });
   }
 
+  async function createIndex(table: Row) {
+    const name = window.prompt("Index name");
+    const column = window.prompt("Column name");
+    if (!name || !column) return;
+    const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, {
+      method: "POST",
+      body: JSON.stringify({
+        action: "createIndex",
+        name,
+        table: table.table || table.label,
+        schema: table.schema,
+        columns: [{ name: column }],
+      }),
+    });
+    if (!window.confirm(preview.sql)) return;
+    await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: preview.sql }) });
+    await refresh();
+  }
+
   async function drop() {
     if (!dropTarget || typedName !== dropTarget.label) return;
     const action =
@@ -170,7 +189,12 @@ export function Explorer({
           Refresh
         </button>
         {!session.readOnly && <button className="btn" type="button" onClick={() => onCreate("database")}>Create database</button>}
-        {!session.readOnly && (selectedRow?.kind === "table" || selectedRow?.kind === "view" || selectedRow?.kind === "database" || selectedRow?.kind === "column") && (
+        {!session.readOnly && selectedRow?.kind === "table" && (
+          <button className="btn" type="button" onClick={() => void createIndex(selectedRow)}>
+            Create index
+          </button>
+        )}
+        {!session.readOnly && selectedRow && ["table", "view", "database", "column"].includes(selectedRow.kind) && (
           <button className="btn danger-text" type="button" onClick={() => { setDropTarget(selectedRow); setTypedName(""); }}>
             Drop
           </button>
@@ -239,6 +263,14 @@ async function childrenOf(config: ClientConfig, session: LiveSession, item: Row,
       row(`folder:${item.id}:views`, "Views", "folder", item.depth + 1, { database, schema, expandable: true }),
     ];
   }
+  if (item.kind === "folder" && item.label === "Indexes") {
+    const names = await api<string[]>(config, `${base}/indexes?${query(session, item)}&table=${encodeURIComponent(item.table || "")}`);
+    return names.map((name) => row(`index:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database }));
+  }
+  if (item.kind === "folder" && item.label === "Foreign keys") {
+    const names = await api<string[]>(config, `${base}/foreign-keys?${query(session, item)}&table=${encodeURIComponent(item.table || "")}`);
+    return names.map((name) => row(`fkey:${item.table}.${name}`, name, "column", item.depth + 1, { table: item.table, schema: item.schema, database: item.database }));
+  }
   if (item.kind === "folder" && item.label === "Tables") {
     const q = query(session, item);
     const names = await api<string[]>(config, `${base}/tables?${q}`);
@@ -252,10 +284,15 @@ async function childrenOf(config: ClientConfig, session: LiveSession, item: Row,
   if (item.kind === "table") {
     const q = query(session, item) + `&table=${encodeURIComponent(item.table || "")}`;
     const cols = await api<Column[]>(config, `${base}/columns?${q}`);
-    return cols.map((col) => {
+    const columnRows = cols.map((col) => {
       const meta = [col.type, col.primaryKey ? "PK" : "", col.nullable ? "null" : ""].filter(Boolean).join(" · ");
-      return row(`col:${item.id}.${col.name}`, col.name, "column", item.depth + 1, { meta });
+      return row(`col:${item.id}.${col.name}`, col.name, "column", item.depth + 1, { meta, table: item.table, schema: item.schema, database: item.database });
     });
+    return [
+      ...columnRows,
+      row(`idx:${item.id}`, "Indexes", "folder", item.depth + 1, { database: item.database, schema: item.schema, table: item.table, expandable: true }),
+      row(`fk:${item.id}`, "Foreign keys", "folder", item.depth + 1, { database: item.database, schema: item.schema, table: item.table, expandable: true }),
+    ];
   }
   return [];
 }

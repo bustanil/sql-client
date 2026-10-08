@@ -3,6 +3,9 @@ package httpapi
 import (
 	"net/http"
 
+	"context"
+	"database/sql"
+
 	"github.com/bustanil/sql-client/internal/engine"
 )
 
@@ -104,4 +107,33 @@ func (s *Server) columns(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, cols)
+}
+
+func (s *Server) indexes(w http.ResponseWriter, r *http.Request) {
+	s.namedChildren(w, r, engine.Indexes)
+}
+
+func (s *Server) foreignKeys(w http.ResponseWriter, r *http.Request) {
+	s.namedChildren(w, r, engine.ForeignKeys)
+}
+
+func (s *Server) namedChildren(w http.ResponseWriter, r *http.Request, load func(ctx context.Context, db *sql.DB, engineName, schema, table string) ([]string, error)) {
+	sess, ok := s.Sessions.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, "session not found")
+		return
+	}
+	schema := r.URL.Query().Get("schema")
+	if sess.Engine == "MySQL" {
+		schema = r.URL.Query().Get("database")
+		if schema == "" {
+			schema = sess.Database
+		}
+	}
+	names, err := load(r.Context(), sess.DB, sess.Engine, schema, r.URL.Query().Get("table"))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, names)
 }
