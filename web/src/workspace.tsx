@@ -25,6 +25,11 @@ function clampSide(clientX: number, workspace: HTMLElement) {
   return Math.round(Math.min(Math.max(clientX - bounds.left, sideMin), max));
 }
 
+type WorkspaceTab = { id: string; sessionId: string; title: string } & (
+  | { kind: "query" }
+  | { kind: "data"; target: GridTarget }
+);
+
 export type LiveSession = {
   sessionId: string;
   engine: string;
@@ -45,9 +50,16 @@ export function Workspace({
   onSession: (next: LiveSession) => void;
   onDisconnect: () => void;
 }) {
-  const [grid, setGrid] = useState<GridTarget | null>(null);
-  const [querySession, setQuerySession] = useState<string | null>(null);
+  const [tabs, setTabs] = useState<WorkspaceTab[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [tabError, setTabError] = useState("");
   const [ddl, setDDL] = useState<"database" | "table" | null>(null);
+  const queryCount = useRef(0);
+  const dataCount = useRef(0);
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+  const pendingData = useRef(new Set<string>());
+  const mounted = useRef(true);
   const [schema, setSchema] = useState("public");
   const [sideWidth, setSideWidth] = useState(readSideWidth);
   const [toolbarRoot, setToolbarRoot] = useState<HTMLDivElement | null>(null);
@@ -57,12 +69,99 @@ export function Workspace({
   const clearGridRows = useCallback(() => setRowClear((current) => current + 1), []);
 
   useEffect(() => {
-    if (!querySession || !session.database) return;
-    void api(config, `/sessions/${querySession}/database`, {
-      method: "POST",
-      body: JSON.stringify({ database: session.database }),
-    }).catch(() => undefined);
-  }, [config, querySession, session.database]);
+    if (!session.database) return;
+    for (const tab of tabsRef.current) {
+      if (tab.kind !== "query") continue;
+      void api(config, `/sessions/${tab.sessionId}/database`, {
+        method: "POST",
+        body: JSON.stringify({ database: session.database }),
+      }).catch(() => undefined);
+    }
+  }, [config, session.database]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      for (const tab of tabsRef.current) {
+        void api(config, `/sessions/${tab.sessionId}`, { method: "DELETE" }).catch(() => undefined);
+      }
+    };
+  }, [config]);
+
+  async function newQuery() {
+    queryCount.current += 1;
+    const number = queryCount.current;
+    const id = `query-${number}`;
+    setTabError("");
+    try {
+      const opened = await api<{ sessionId: string; connectionId?: string }>(config, `/sessions/${session.sessionId}/spawn`, { method: "POST" });
+      if (!mounted.current) {
+        void api(config, `/sessions/${opened.sessionId}`, { method: "DELETE" }).catch(() => undefined);
+        return;
+      }
+      if (!session.connectionId && opened.connectionId) onSession({ ...session, connectionId: opened.connectionId });
+      setTabs((prev) => [...prev, { kind: "query", id, sessionId: opened.sessionId, title: `Query ${number}` }]);
+      selectTab(id);
+    } catch (err) {
+      if (mounted.current) setTabError(err instanceof Error ? err.message : "Could not open query");
+    }
+  }
+
+  async function openData(target: GridTarget) {
+    const nextTarget = { ...target, database: target.database || session.database };
+    const targetKey = JSON.stringify([nextTarget.database, nextTarget.schema || "", nextTarget.relation]);
+    setTabError("");
+    const existing = tabsRef.current.find((tab) => tab.kind === "data"
+      && tab.target.database === nextTarget.database
+      && (tab.target.schema || "") === (nextTarget.schema || "")
+      && tab.target.relation === nextTarget.relation);
+    if (existing) {
+      selectTab(existing.id);
+      return;
+    }
+    if (pendingData.current.has(targetKey)) return;
+    pendingData.current.add(targetKey);
+    dataCount.current += 1;
+    const id = `data-${dataCount.current}`;
+    let sessionId: string | undefined;
+    try {
+      const opened = await api<{ sessionId: string; database: string }>(config, `/sessions/${session.sessionId}/spawn`, { method: "POST" });
+      sessionId = opened.sessionId;
+      if (nextTarget.database && opened.database !== nextTarget.database) {
+        await api(config, `/sessions/${sessionId}/database`, {
+          method: "POST",
+          body: JSON.stringify({ database: nextTarget.database }),
+        });
+      }
+      if (!mounted.current) {
+        void api(config, `/sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+        return;
+      }
+      setTabs((prev) => [...prev, { kind: "data", id, sessionId: opened.sessionId, title: target.relation, target: nextTarget }]);
+      selectTab(id);
+    } catch (err) {
+      if (sessionId) void api(config, `/sessions/${sessionId}`, { method: "DELETE" }).catch(() => undefined);
+      if (mounted.current) setTabError(err instanceof Error ? err.message : "Could not open data");
+    } finally {
+      pendingData.current.delete(targetKey);
+    }
+  }
+
+  function selectTab(id: string) {
+    setActiveTab(id);
+    setDDL(null);
+    setRowScope(null);
+  }
+
+  function closeTab(id: string) {
+    const tab = tabs.find((item) => item.id === id);
+    const rest = tabs.filter((item) => item.id !== id);
+    setTabs(rest);
+    setActiveTab((current) => (current === id ? rest.at(-1)?.id ?? null : current));
+    if (activeTab === id) setRowScope(null);
+    if (tab) void api(config, `/sessions/${tab.sessionId}`, { method: "DELETE" }).catch(() => undefined);
+  }
   const dragging = useRef(false);
 
   function rememberWidth(next: number) {
@@ -84,18 +183,16 @@ export function Workspace({
             <OverflowTip className="side-title" text={session.name + (session.readOnly ? " · Read-only" : "")} />
             <div className="meta">{session.engine}</div>
           </div>
-          <button className="btn btn-quiet" type="button" onClick={onDisconnect}>
-            Disconnect
+          <button className="btn btn-quiet btn-icon" type="button" aria-label="Disconnect" aria-describedby="disconnect-tooltip" onClick={onDisconnect}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M8 11 5 14a3.54 3.54 0 0 0 5 5l3-3ZM11 8l3-3a3.54 3.54 0 0 1 5 5l-3 3ZM9 12l2-2M12 15l2-2M5 19l-3 3M19 5l3-3" />
+            </svg>
+            <span className="button-tooltip" id="disconnect-tooltip" role="tooltip">Disconnect</span>
           </button>
           <button
             className="btn"
             type="button"
-            onClick={() => {
-              void api<{ sessionId: string }>(config, `/sessions/${session.sessionId}/spawn`, { method: "POST" }).then((opened) => {
-                setQuerySession(opened.sessionId);
-                setGrid(null);
-              });
-            }}
+            onClick={() => void newQuery()}
           >
             New query
           </button>
@@ -107,16 +204,12 @@ export function Workspace({
           rowScope={rowScope}
           onPick={clearGridRows}
           onSession={onSession}
-          onOpen={(target) => {
-            setGrid(target);
-            setQuerySession(null);
-            setDDL(null);
-          }}
+          onOpen={(target) => void openData(target)}
           onCreate={(kind, nextSchema) => {
             setDDL(kind);
             if (nextSchema) setSchema(nextSchema);
-            setQuerySession(null);
-            setGrid(null);
+            setActiveTab(null);
+            setRowScope(null);
           }}
         />
       </aside>
@@ -154,7 +247,23 @@ export function Workspace({
         }}
       />
       <section className="main-pane">
-        {ddl && (
+        {tabs.length > 0 && (
+          <div className="tabbar" role="tablist" aria-label="Workspace tabs">
+            {tabs.map((tab) => (
+              <div key={tab.id} className={activeTab === tab.id ? "tab active" : "tab"}>
+                <button className="tab-main" type="button" role="tab" id={`tab-${tab.id}`} aria-controls={`pane-${tab.id}`} aria-selected={activeTab === tab.id} title={tab.kind === "data" ? [tab.target.database, tab.target.schema, tab.title].filter(Boolean).join(".") : tab.title} onClick={() => selectTab(tab.id)}>
+                  <TabIcon kind={tab.kind} />
+                  <span className="tab-title">{tab.title}</span>
+                </button>
+                <button className="tab-close" type="button" aria-label={`Close ${tab.title}`} onClick={() => closeTab(tab.id)}>
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {tabError && <p className="empty" role="alert">{tabError}</p>}
+        {ddl && activeTab === null && (
           <DDLForm
             config={config}
             sessionId={session.sessionId}
@@ -165,18 +274,27 @@ export function Workspace({
             onDone={() => setDDL(null)}
           />
         )}
-        {querySession && !ddl && (
-          <QueryEditor
-            config={config}
-            sessionId={querySession}
-            connectionId={session.connectionId}
-            clearRows={rowClear}
-            onRowScope={reportRowScope}
-          />
-        )}
-        {grid && !querySession && (
-          <DataGrid config={config} sessionId={session.sessionId} target={grid} clearRows={rowClear} onRowScope={reportRowScope} />
-        )}
+        <div className="tab-stack" hidden={activeTab === null}>
+          {tabs.map((tab) => (
+            <div key={tab.id} id={`pane-${tab.id}`} role="tabpanel" aria-labelledby={`tab-${tab.id}`} className={activeTab === tab.id ? "tab-pane active" : "tab-pane"}>
+              {tab.kind === "query" ? <QueryEditor
+                config={config}
+                sessionId={tab.sessionId}
+                connectionId={session.connectionId}
+                clearRows={rowClear}
+                onRowScope={reportRowScope}
+                active={activeTab === tab.id}
+              /> : <DataGrid
+                config={config}
+                sessionId={tab.sessionId}
+                target={tab.target}
+                clearRows={rowClear}
+                readOnly={session.readOnly}
+                onRowScope={activeTab === tab.id ? reportRowScope : undefined}
+              />}
+            </div>
+          ))}
+        </div>
         <footer className="status">
           <span className="dot" />
           <span>{bits.join(" · ")}</span>
@@ -184,5 +302,22 @@ export function Workspace({
       </section>
       </div>
     </div>
+  );
+}
+
+function TabIcon({ kind }: { kind: WorkspaceTab["kind"] }) {
+  return (
+    <svg className={`tab-icon ${kind}`} width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {kind === "query" ? (
+        <>
+          <path d="m5 4-3 4 3 4m6-8 3 4-3 4M9 3 7 13" />
+        </>
+      ) : (
+        <>
+          <rect x="2" y="2.5" width="12" height="11" rx="1.5" />
+          <path d="M2 6h12M2 10h12M6 6v7.5" />
+        </>
+      )}
+    </svg>
   );
 }

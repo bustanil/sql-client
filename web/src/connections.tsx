@@ -54,6 +54,10 @@ export function Connections({ config, onConnect }: { config: ClientConfig; onCon
   const [editing, setEditing] = useState(false);
   const [testLine, setTestLine] = useState("");
   const [deleting, setDeleting] = useState<Connection | null>(null);
+  const [signingIn, setSigningIn] = useState<Connection | null>(null);
+  const [signInPassword, setSignInPassword] = useState("");
+  const [signInError, setSignInError] = useState("");
+  const [savePassword, setSavePassword] = useState(false);
 
   async function reload() {
     setRows(await api<Connection[]>(config, "/connections"));
@@ -112,23 +116,87 @@ export function Connections({ config, onConnect }: { config: ClientConfig; onCon
     await reload();
   }
 
+  function rememberedPassword(id: string): string | null {
+    try {
+      const value = sessionStorage.getItem(`sqlc.pw.${id}`);
+      return value === null ? null : value;
+    } catch {
+      return null;
+    }
+  }
+
+  function rememberPassword(id: string, value: string) {
+    try {
+      sessionStorage.setItem(`sqlc.pw.${id}`, value);
+    } catch {
+      /* this tab can still connect */
+    }
+  }
+
+  function forgetPassword(id: string) {
+    try {
+      sessionStorage.removeItem(`sqlc.pw.${id}`);
+    } catch {
+      /* nothing stored */
+    }
+  }
+
+  function askPassword(row: Connection, message = "") {
+    setSigningIn(row);
+    setSignInPassword("");
+    setSignInError(message);
+    setSavePassword(Boolean(window.sqlc?.keychain));
+  }
+
+  async function openSession(row: Connection, value: string) {
+    const opened = await api<{ sessionId: string; engine: string; database: string; readOnly: boolean; connectionId: string }>(
+      config,
+      "/sessions",
+      { method: "POST", body: JSON.stringify({ connectionId: row.id, password: value, role: "explorer" }) },
+    );
+    onConnect({ ...opened, name: row.name });
+  }
+
   async function connect(row: Connection) {
     setError("");
-    let password = "";
-    try {
-      password = (await window.sqlc?.keychain?.get(row.id)) || "";
-    } catch {
-      password = "";
+    if (window.sqlc?.keychain) {
+      try {
+        const saved = (await window.sqlc.keychain.get(row.id)) || "";
+        try {
+          await openSession(row, saved);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Connect failed");
+        }
+        return;
+      } catch {
+        askPassword(row);
+        return;
+      }
     }
+    const saved = rememberedPassword(row.id);
+    if (saved !== null) {
+      try {
+        await openSession(row, saved);
+      } catch (err) {
+        forgetPassword(row.id);
+        askPassword(row, err instanceof Error ? err.message : "Connect failed");
+      }
+      return;
+    }
+    askPassword(row);
+  }
+
+  async function submitSignIn(event: FormEvent) {
+    event.preventDefault();
+    if (!signingIn) return;
+    setSignInError("");
     try {
-      const opened = await api<{ sessionId: string; engine: string; database: string; readOnly: boolean; connectionId: string }>(
-        config,
-        "/sessions",
-        { method: "POST", body: JSON.stringify({ connectionId: row.id, password, role: "explorer" }) },
-      );
-      onConnect({ ...opened, name: row.name });
+      if (savePassword && signInPassword && window.sqlc?.keychain) await keychainSet(signingIn.id, signInPassword);
+      await openSession(signingIn, signInPassword);
+      if (!window.sqlc?.keychain) rememberPassword(signingIn.id, signInPassword);
+      setSigningIn(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Connect failed");
+      setSignInError(err instanceof Error ? err.message : "Connect failed");
     }
   }
 
@@ -279,6 +347,42 @@ export function Connections({ config, onConnect }: { config: ClientConfig; onCon
               </button>
               <button className="btn btn-primary" type="submit">
                 Save
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {signingIn && (
+        <div className="scrim">
+          <form className="sheet narrow" onSubmit={(event) => void submitSignIn(event)}>
+            <h2>Password for {signingIn.name}</h2>
+            <p className="help">
+              {window.sqlc?.keychain
+                ? "The keychain did not return a password. Enter it to connect."
+                : "The browser cannot read the keychain. This password is used for this tab only."}
+            </p>
+            <label className="field">
+              Password
+              <input
+                type="password"
+                value={signInPassword}
+                autoFocus
+                onChange={(e) => setSignInPassword(e.target.value)}
+              />
+            </label>
+            {window.sqlc?.keychain && (
+              <label className="check">
+                <input type="checkbox" checked={savePassword} onChange={(e) => setSavePassword(e.target.checked)} />
+                Save in keychain
+              </label>
+            )}
+            {signInError && <p className="test-line bad">{signInError}</p>}
+            <div className="sheet-actions">
+              <button className="btn" type="button" onClick={() => setSigningIn(null)}>
+                Cancel
+              </button>
+              <button className="btn btn-primary" type="submit">
+                Connect
               </button>
             </div>
           </form>

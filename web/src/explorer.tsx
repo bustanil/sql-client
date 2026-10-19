@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { api, type ClientConfig } from "./api";
 import { OverflowTip } from "./overflow";
@@ -52,6 +52,7 @@ export function Explorer({
   const [dropTarget, setDropTarget] = useState<Row | null>(null);
   const [typedName, setTypedName] = useState("");
   const [error, setError] = useState("");
+  const [alter, setAlter] = useState<AlterDraft | null>(null);
 
   async function loadDatabases() {
     const names = await api<string[]>(config, `/sessions/${session.sessionId}/databases?system=${system ? "1" : "0"}`);
@@ -111,7 +112,7 @@ export function Explorer({
           method: "POST",
           body: JSON.stringify({ database: item.database }),
         });
-        onSession({ ...switched, name: session.name });
+        onSession({ ...session, ...switched });
       }
       if (!cache[item.id]) {
         const children = await childrenOf(config, session, item, system);
@@ -132,48 +133,59 @@ export function Explorer({
     setCache({ conn: items });
   }
 
-  async function createIndex(table: Row) {
-    const name = window.prompt("Index name");
-    const column = window.prompt("Column name");
-    if (!name || !column) return;
-    const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "createIndex",
-        name,
-        table: table.table || table.label,
-        schema: table.schema,
-        columns: [{ name: column }],
-      }),
-    });
-    if (!window.confirm(preview.sql)) return;
-    await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: preview.sql }) });
-    await refresh();
+  function openAlter(kind: AlterDraft["kind"], table: Row) {
+    setAlter({ kind, table, name: "", column: "", refTable: "", refColumn: "", sql: "", error: "" });
   }
 
-  async function createForeignKey(table: Row) {
-    const name = window.prompt("Constraint name");
-    const column = window.prompt("Local column");
-    const refTable = window.prompt("Referenced table");
-    const refColumn = window.prompt("Referenced column");
-    if (!name || !column || !refTable || !refColumn) return;
-    const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, {
-      method: "POST",
-      body: JSON.stringify({
-        action: "createForeignKey",
-        name,
-        table: table.table || table.label,
-        schema: table.schema,
-        refTable,
-        columns: [{ name: column }],
-        refColumns: [refColumn],
-        onDelete: "NO ACTION",
-        onUpdate: "NO ACTION",
-      }),
-    });
-    if (!window.confirm(preview.sql)) return;
-    await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: preview.sql }) });
-    await refresh();
+  function editAlter(patch: Partial<Pick<AlterDraft, "name" | "column" | "refTable" | "refColumn">>) {
+    setAlter((prev) => (prev ? { ...prev, ...patch, sql: "", error: "" } : prev));
+  }
+
+  async function submitAlter(event: FormEvent) {
+    event.preventDefault();
+    if (!alter) return;
+    const draft = alter;
+    const ready = draft.kind === "index" ? draft.name && draft.column : draft.name && draft.column && draft.refTable && draft.refColumn;
+    if (!ready) {
+      setAlter({ ...draft, error: "Fill in every field." });
+      return;
+    }
+    try {
+      if (!draft.sql) {
+        const body =
+          draft.kind === "index"
+            ? { action: "createIndex", name: draft.name, table: draft.table.table || draft.table.label, schema: draft.table.schema, columns: [{ name: draft.column }] }
+            : {
+                action: "createForeignKey",
+                name: draft.name,
+                table: draft.table.table || draft.table.label,
+                schema: draft.table.schema,
+                refTable: draft.refTable,
+                columns: [{ name: draft.column }],
+                refColumns: [draft.refColumn],
+                onDelete: "NO ACTION",
+                onUpdate: "NO ACTION",
+              };
+        const preview = await api<{ sql: string }>(config, `/sessions/${session.sessionId}/ddl/preview`, {
+          method: "POST",
+          body: JSON.stringify(body),
+        });
+        setAlter({ ...draft, sql: preview.sql, error: "" });
+        return;
+      }
+      if (draft.table.database && draft.table.database !== session.database) {
+        const switched = await api<Omit<LiveSession, "name">>(config, `/sessions/${session.sessionId}/database`, {
+          method: "POST",
+          body: JSON.stringify({ database: draft.table.database }),
+        });
+        onSession({ ...session, ...switched });
+      }
+      await api(config, `/sessions/${session.sessionId}/execute`, { method: "POST", body: JSON.stringify({ sql: draft.sql }) });
+      setAlter(null);
+      await refresh();
+    } catch (err) {
+      setAlter({ ...draft, error: err instanceof Error ? err.message : "Request failed" });
+    }
   }
 
   async function drop() {
@@ -212,6 +224,7 @@ export function Explorer({
             className="tree-row"
             style={{ paddingLeft: 4 + item.depth * 14 }}
             aria-selected={item.id === selected}
+            aria-current={item.kind === "database" && item.database === session.database ? true : undefined}
             onClick={(event) => {
               setSelected(item.id);
               onPick();
@@ -264,12 +277,12 @@ export function Explorer({
               </button>
             )}
             {!session.readOnly && selectedRow?.kind === "table" && (
-              <button className="btn" type="button" onClick={() => void createIndex(selectedRow)}>
+              <button className="btn" type="button" onClick={() => openAlter("index", selectedRow)}>
                 Create index
               </button>
             )}
             {!session.readOnly && selectedRow?.kind === "table" && (
-              <button className="btn" type="button" onClick={() => void createForeignKey(selectedRow)}>
+              <button className="btn" type="button" onClick={() => openAlter("foreignKey", selectedRow)}>
                 Create foreign key
               </button>
             )}
@@ -315,6 +328,45 @@ export function Explorer({
               <button className="btn btn-danger" type="button" disabled={typedName !== dropTarget.label} onClick={() => void drop()}>Drop</button>
             </div>
           </div>
+        </div>
+      )}
+      {alter && (
+        <div className="scrim">
+          <form className="sheet narrow" onSubmit={(event) => void submitAlter(event)}>
+            <h2>{alter.kind === "index" ? "Create index" : "Create foreign key"}</h2>
+            <p className="help">
+              On {alter.table.schema ? `${alter.table.schema}.${alter.table.label}` : alter.table.label}. The statement runs only after you confirm it.
+            </p>
+            <div className="fields">
+              <label className="field">
+                {alter.kind === "index" ? "Index name" : "Constraint name"}
+                <input value={alter.name} onChange={(e) => editAlter({ name: e.target.value })} autoFocus />
+              </label>
+              <label className="field">
+                {alter.kind === "index" ? "Column" : "Local column"}
+                <input value={alter.column} onChange={(e) => editAlter({ column: e.target.value })} />
+              </label>
+              {alter.kind === "foreignKey" && (
+                <>
+                  <label className="field">
+                    Referenced table
+                    <input value={alter.refTable} onChange={(e) => editAlter({ refTable: e.target.value })} />
+                  </label>
+                  <label className="field">
+                    Referenced column
+                    <input value={alter.refColumn} onChange={(e) => editAlter({ refColumn: e.target.value })} />
+                  </label>
+                </>
+              )}
+            </div>
+            {alter.kind === "foreignKey" && <p className="help">ON DELETE and ON UPDATE are NO ACTION.</p>}
+            {alter.sql && <pre className="alter-sql">{alter.sql}</pre>}
+            {alter.error && <p className="test-line bad">{alter.error}</p>}
+            <div className="sheet-actions">
+              <button className="btn" type="button" onClick={() => setAlter(null)}>Cancel</button>
+              <button className="btn btn-primary" type="submit">{alter.sql ? "Run" : "Show SQL"}</button>
+            </div>
+          </form>
         </div>
       )}
       {menu && (
@@ -377,6 +429,17 @@ function TreeIcon({ name }: { name: IconName }) {
     </svg>
   );
 }
+
+type AlterDraft = {
+  kind: "index" | "foreignKey";
+  table: Row;
+  name: string;
+  column: string;
+  refTable: string;
+  refColumn: string;
+  sql: string;
+  error: string;
+};
 
 function row(id: string, label: string, kind: Kind, depth: number, extra: Partial<Row>): Row {
   return { id, label, kind, depth, expandable: false, ...extra };

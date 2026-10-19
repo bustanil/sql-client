@@ -16,7 +16,7 @@ The process split and HTTP API are in [ARCHITECTURE.md](ARCHITECTURE.md). The or
 | --- | --- |
 | Where it runs | On this Mac. Not a hosted service. |
 | Who it's for | One person. No accounts, no sync. |
-| Data grid | Read-only. No cell editing. |
+| Data grid | Editable per row. Changes and deletes are explicit until committed. |
 | DDL for database and table | A form builds SQL. The user can edit the statement, then run it. |
 | Indexes and foreign keys | Prompts collect the names, then the app shows the SQL and asks for confirmation. |
 | Reachability | Direct TCP, with TLS options. No SSH tunnel. |
@@ -34,21 +34,23 @@ A developer working against a local or remote PostgreSQL or MySQL database. They
 3. Create and drop databases and tables from a form that shows the SQL.
 4. Create and drop indexes and foreign keys by confirming generated SQL.
 5. Open a table and narrow the page: filter, sort, hide columns, page through rows.
-6. Select rows and cells, copy a highlighted cell, and export selected rows.
-7. Run SQL in its own session and see rows or the server error.
-8. Export the filtered grid, or the rows already returned by a query, as CSV.
-9. Complete table and column names in the editor.
+6. Select rows and cells, edit several values in a row, mark rows for deletion, and commit the whole change together. A failed commit keeps the dirty edits.
+7. Use a calendar and time picker for date, time, and timestamp columns, or type the value directly in the cell.
+8. Copy a highlighted cell in a query result, and export selected rows.
+9. Run SQL in its own session and see rows or the server error.
+10. Export the filtered grid, or the rows already returned by a query, as CSV.
+11. Complete table and column names in the editor.
 
 ## Not in this version
 
 - Other databases, SSH tunnels, proxies, and cloud identity.
-- Editing, inserting, or deleting rows. Importing CSV.
+- Inserting rows. Importing CSV.
 - A separate add-column or show-definition screen. `CREATE VIEW` and `TRUNCATE` as forms.
 - Refusing to drop the last column of a table.
 - Several query tabs, tab rename, or running only the selection.
 - Moving the editor cursor to a server error position.
 - Truncating long cell text, or rendering binary values as a byte length.
-- A custom app icon, Developer ID signing, notarization, and auto-update.
+- Developer ID signing, notarization, and auto-update.
 - Windows and Linux builds.
 
 ## Window
@@ -261,9 +263,16 @@ Opening a table or view shows a read-only grid. The grid toolbar has the relatio
 - Clicking the highlighted cell when it is the only selected row clears the selection.
 - Shift extends the selection from the anchor row through the clicked row. Command toggles a row. Command-Shift adds that range.
 - Clicking an object in the sidebar clears the row selection.
-- Double-click copies a cell only when that cell is already the blue one. A double-click on another cell in the selected row moves the highlight and does not copy. `NULL` copies as an empty value. A toast says "Copied to clipboard" for 2 seconds.
+- Double-click a cell in a table grid to edit it. A double-click in a query result still copies the highlighted cell; `NULL` copies as an empty value. A toast says "Copied to clipboard" for 2 seconds.
+- The cell editor puts the text cursor in the cell. The cell text can be typed directly, so any value the server accepts can be entered without the picker.
+- Date, time, and timestamp cells also show a separate calendar button. It opens the native date, time, or date-time picker and writes the picked value into the cell text.
+- A **NULL** button appears when the column allows null. It sets the cell to SQL NULL; typing replaces it with text. A column that does not allow null has no NULL button.
+- Dirty cells get an amber outline. The grid toolbar shows **Commit** and **Discard** while anything is dirty.
+- **Commit** sends every dirty cell and every marked delete in one request, in one database transaction. A table or view with no primary key opens read-only, because a row cannot be identified safely. A read-only connection cannot edit or delete rows.
+- Validation runs on commit. Unknown columns, a null in a `NOT NULL` column, and values that do not match the column type are reported per row and column. The cell gets a red outline, the message appears above the grid, and every dirty edit and delete mark stays in place for correction.
+- A successful commit reloads the page, clears the marks, and reports the update and delete counts. A failed commit changes nothing on the server.
+- Select one or more rows and press **Delete** on the grid toolbar to mark them for deletion. Marked rows use a red highlight and keep their data visible until commit. **Restore** removes the mark. **Discard** drops every dirty cell and every delete mark.
 - `NULL` renders as the label `NULL`, distinct from an empty string.
-- The grid does not edit cells, delete rows, or insert rows.
 
 ### Export
 
@@ -348,10 +357,11 @@ The UI uses the same words on both engines: database, table, view, column. It sa
 8. The user can create an index and a foreign key by confirming the SQL.
 9. The user can export the filtered grid, selected rows, and query results as CSV.
 10. The editor suggests tables and columns and colors SQL.
+11. The user can edit several cells in a table row, use a date or time picker, mark rows for deletion, and commit the batch. Invalid values are reported on commit and the dirty edit is kept.
 
 ## Later
 
 1. SSH tunnel on a connection.
-2. Edit, insert, and delete rows from the grid.
-3. Developer ID signing, notarization, and a real app icon.
+2. Insert rows from the grid.
+3. Developer ID signing and notarization.
 4. Windows and Linux builds.

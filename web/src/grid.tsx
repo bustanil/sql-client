@@ -1,14 +1,21 @@
-import { useEffect, useState } from "react";
-import { api, type ClientConfig } from "./api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, RequestError, type ClientConfig, type FieldError } from "./api";
 import { saveCSV } from "./csv";
 import { SelectableTable, type RowScope } from "./selectable";
+import { columnHasZone, columnKind, draftDiffers, type Cell, type EditDraft, type FieldKind } from "./values";
 
 export type { RowScope };
+
+type ColumnInfo = { name: string; type: string; nullable: boolean; default?: string; primaryKey: boolean };
 
 type Page = {
   sql: string;
   columns: string[];
-  rows: Array<Array<string | number | boolean | null>>;
+  columnInfo: ColumnInfo[];
+  identityColumns: string[];
+  identity: Array<Array<string | null>>;
+  rows: Cell[][];
+  display?: Array<Array<string | null>>;
   window: { start: number; end: number };
 };
 
@@ -47,18 +54,23 @@ function filterSQL(filter: Filter) {
   return `${filter.column} ${symbol[filter.op] || "="} ${quoted}`;
 }
 
+type Update = { row: number; identity: Record<string, string | null>; changes: Record<string, string | null> };
+type Delete = { row: number; identity: Record<string, string | null> };
+
 export function DataGrid({
   config,
   sessionId,
   target,
   clearRows,
   onRowScope,
+  readOnly = false,
 }: {
   config: ClientConfig;
   sessionId: string;
   target: GridTarget;
   clearRows: number;
   onRowScope?: (scope: RowScope | null) => void;
+  readOnly?: boolean;
 }) {
   const [pageSize, setPageSize] = useState(100);
   const [offset, setOffset] = useState(0);
@@ -73,6 +85,18 @@ export function DataGrid({
   const [count, setCount] = useState<number | null>(null);
   const [columnsOpen, setColumnsOpen] = useState(false);
   const [picked, setPicked] = useState<string[]>([]);
+  const [reloadCount, setReloadCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [edits, setEdits] = useState<Record<string, Record<string, EditDraft>>>({});
+  const [deleted, setDeleted] = useState<Set<string>>(new Set());
+  const [cellErrors, setCellErrors] = useState<Record<string, Record<string, string>>>({});
+  const [commitError, setCommitError] = useState("");
+  const [commitDetails, setCommitDetails] = useState<string[]>([]);
+  const [committing, setCommitting] = useState(false);
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
+  const [toast, setToast] = useState("");
+  const toastTimer = useRef<number | null>(null);
+  const committingRef = useRef(false);
 
   useEffect(() => {
     setOffset(0);
@@ -82,15 +106,22 @@ export function DataGrid({
     setSort(null);
     setCount(null);
     setColumnsOpen(false);
+    setEdits({});
+    setDeleted(new Set());
+    setCellErrors({});
+    setCommitError("");
+    setCommitDetails([]);
   }, [target.relation, target.schema, target.database]);
 
   useEffect(() => {
     if (visible && visible.length === 0) {
-      setPage({ sql: "", columns: [], rows: [], window: { start: 0, end: 0 } });
+      setPage({ sql: "", columns: [], columnInfo: [], identityColumns: [], identity: [], rows: [], display: [], window: { start: 0, end: 0 } });
       setError("");
+      setLoading(false);
       return;
     }
     let cancelled = false;
+    setLoading(true);
     const body: Record<string, unknown> = {
       database: target.database,
       schema: target.schema,
@@ -111,11 +142,14 @@ export function DataGrid({
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [config, sessionId, target.database, target.schema, target.relation, pageSize, offset, filters, sort, visible]);
+  }, [config, sessionId, target.database, target.schema, target.relation, pageSize, offset, filters, sort, visible, reloadCount]);
 
   useEffect(() => {
     if (!columnsOpen && !filtersOpen) return;
@@ -129,6 +163,227 @@ export function DataGrid({
     return () => document.removeEventListener("keydown", onKey);
   }, [columnsOpen, filtersOpen]);
 
+  const columnKinds = useMemo(() => {
+    const out: Record<string, FieldKind> = {};
+    for (const info of page?.columnInfo || []) out[info.name] = columnKind(info.type);
+    return out;
+  }, [page]);
+
+  const columnZones = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const info of page?.columnInfo || []) out[info.name] = columnHasZone(info.type);
+    return out;
+  }, [page]);
+
+  const columnNullable = useMemo(() => {
+    const out: Record<string, boolean> = {};
+    for (const info of page?.columnInfo || []) out[info.name] = info.nullable;
+    return out;
+  }, [page]);
+
+  function rowKeyAt(index: number): string | null {
+    if (!page || page.identityColumns.length === 0) return null;
+    const identity = page.identity[index];
+    if (!identity) return null;
+    return JSON.stringify(identity);
+  }
+
+  // Use the exact text from the server for display and edits. The typed rows
+  // can lose precision on a bigint above the JavaScript safe integer.
+  const rowValues = page?.display ?? page?.rows ?? [];
+
+  const rowKeys = useMemo(() => (page ? rowValues.map((_, index) => rowKeyAt(index) ?? `row:${index}`) : []), [page, rowValues]);
+
+  const canEdit = !readOnly && !!page && (page.identityColumns?.length || 0) > 0;
+
+  const dirtyCount = useMemo(() => {
+    if (!page) return 0;
+    let total = 0;
+    rowValues.forEach((row, index) => {
+      const key = rowKeyAt(index);
+      const rowDrafts = key ? edits[key] : undefined;
+      if (!rowDrafts) return;
+      for (const [column, draft] of Object.entries(rowDrafts)) {
+        const cellIndex = page.columns.indexOf(column);
+        if (cellIndex < 0) continue;
+        if (draftDiffers(row[cellIndex], draft, columnKinds[column] || "text", columnZones[column] || false)) total += 1;
+      }
+    });
+    return total;
+  }, [page, rowValues, edits, columnKinds, columnZones]);
+
+  const hasPending = dirtyCount > 0 || deleted.size > 0;
+  const selectedHasDeleted = selectedRows.some((index) => {
+    const key = rowKeyAt(index);
+    return key ? deleted.has(key) : false;
+  });
+
+  const handleSelection = useCallback((next: number[]) => setSelectedRows(next), []);
+
+  function showToast(message: string) {
+    setToast(message);
+    if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(""), 2600);
+  }
+
+  function clearPending() {
+    setEdits({});
+    setDeleted(new Set());
+    setCellErrors({});
+    setCommitError("");
+    setCommitDetails([]);
+  }
+
+  function confirmDiscard() {
+    if (!hasPending) return true;
+    if (!window.confirm("Discard row changes that are not committed?")) return false;
+    clearPending();
+    return true;
+  }
+
+  function setDraft(index: number, column: string, next: EditDraft) {
+    if (!page || committingRef.current) return;
+    const key = rowKeyAt(index);
+    const cellIndex = page.columns.indexOf(column);
+    if (!key || cellIndex < 0) return;
+    setCommitError("");
+    setCommitDetails([]);
+    const dirty = draftDiffers(rowValues[index]?.[cellIndex] ?? null, next, columnKinds[column] || "text", columnZones[column] || false);
+    setEdits((current) => {
+      const rowDrafts = { ...(current[key] || {}) };
+      if (dirty) rowDrafts[column] = next;
+      else delete rowDrafts[column];
+      const nextEdits = { ...current };
+      if (Object.keys(rowDrafts).length === 0) delete nextEdits[key];
+      else nextEdits[key] = rowDrafts;
+      return nextEdits;
+    });
+    setCellErrors((current) => {
+      if (!current[key]?.[column]) return current;
+      const rowErrors = { ...current[key] };
+      delete rowErrors[column];
+      const nextErrors = { ...current };
+      if (Object.keys(rowErrors).length === 0) delete nextErrors[key];
+      else nextErrors[key] = rowErrors;
+      return nextErrors;
+    });
+  }
+
+  function identityAt(index: number): Record<string, string | null> {
+    const identity: Record<string, string | null> = {};
+    if (!page) return identity;
+    page.identityColumns.forEach((name, column) => {
+      identity[name] = page.identity[index]?.[column] ?? null;
+    });
+    return identity;
+  }
+
+  function markDeleted() {
+    if (!canEdit) return;
+    const keys = selectedRows.map((index) => rowKeyAt(index)).filter((key): key is string => key !== null);
+    if (keys.length === 0) return;
+    const removed = new Set(keys);
+    setDeleted((current) => new Set([...current, ...removed]));
+    setEdits((current) => {
+      const next = { ...current };
+      for (const key of removed) delete next[key];
+      return next;
+    });
+    setCellErrors((current) => {
+      const next = { ...current };
+      for (const key of removed) delete next[key];
+      return next;
+    });
+    setCommitError("");
+    setCommitDetails([]);
+  }
+
+  function restoreDeleted() {
+    const keys = selectedRows.map((index) => rowKeyAt(index)).filter((key): key is string => key !== null && deleted.has(key));
+    if (keys.length === 0) return;
+    const restored = new Set(keys);
+    setDeleted((current) => {
+      const next = new Set(current);
+      for (const key of restored) next.delete(key);
+      return next;
+    });
+    setCommitError("");
+    setCommitDetails([]);
+  }
+
+  async function commit() {
+    if (!page || !canEdit || !hasPending || committingRef.current) return;
+    const updates: Update[] = [];
+    const deletes: Delete[] = [];
+    const keysByRow = new Map<number, string>();
+    rowValues.forEach((row, index) => {
+      const key = rowKeyAt(index);
+      if (!key) return;
+      if (deleted.has(key)) {
+        keysByRow.set(index, key);
+        deletes.push({ row: index, identity: identityAt(index) });
+        return;
+      }
+      const rowDrafts = edits[key];
+      if (!rowDrafts) return;
+      const changes: Record<string, string | null> = {};
+      for (const [column, draft] of Object.entries(rowDrafts)) {
+        const cellIndex = page.columns.indexOf(column);
+        if (cellIndex < 0) continue;
+        if (!draftDiffers(row[cellIndex], draft, columnKinds[column] || "text", columnZones[column] || false)) continue;
+        changes[column] = draft.isNull ? null : draft.text;
+      }
+      if (Object.keys(changes).length > 0) {
+        keysByRow.set(index, key);
+        updates.push({ row: index, identity: identityAt(index), changes });
+      }
+    });
+    if (updates.length === 0 && deletes.length === 0) {
+      showToast("Nothing to commit");
+      return;
+    }
+    committingRef.current = true;
+    setCommitting(true);
+    setCommitError("");
+    setCommitDetails([]);
+    setCellErrors({});
+    try {
+      const result = await api<{ updated: number; deleted: number }>(config, `/sessions/${sessionId}/rows/commit`, {
+        method: "POST",
+        body: JSON.stringify({
+          database: target.database,
+          schema: target.schema,
+          relation: target.relation,
+          updates,
+          deletes,
+        }),
+      });
+      clearPending();
+      setCount(null);
+      setReloadCount((current) => current + 1);
+      showToast(`Committed ${result.updated} update${result.updated === 1 ? "" : "s"} and ${result.deleted} delete${result.deleted === 1 ? "" : "s"}`);
+    } catch (err) {
+      // Keep every dirty edit and pending delete. Only the error markers change.
+      if (err instanceof RequestError && Array.isArray(err.body?.errors)) {
+        const next: Record<string, Record<string, string>> = {};
+        const details = new Set<string>();
+        for (const field of err.body.errors as FieldError[]) {
+          details.add(field.column ? `${field.column}: ${field.message}` : field.message);
+          if (field.row < 0 || !field.column) continue;
+          const key = keysByRow.get(field.row);
+          if (!key) continue;
+          next[key] = { ...(next[key] || {}), [field.column]: field.message };
+        }
+        setCellErrors(next);
+        setCommitDetails([...details]);
+      }
+      setCommitError(err instanceof Error ? err.message : "Commit failed");
+    } finally {
+      committingRef.current = false;
+      setCommitting(false);
+    }
+  }
+
   function openFilters() {
     const column = (allColumns ?? [])[0] || "";
     setFilterDraft(filters.length > 0 ? filters.map((item) => ({ ...item })) : [{ column, op: "eq", value: "" }]);
@@ -141,7 +396,16 @@ export function DataGrid({
 
   function applyFilters() {
     if (!filtersReady(filterDraft)) return;
+    if (!confirmDiscard()) return;
     setFilters(filterDraft);
+    setOffset(0);
+    setCount(null);
+    setFiltersOpen(false);
+  }
+
+  function clearFilters() {
+    if (!confirmDiscard()) return;
+    setFilters([]);
     setOffset(0);
     setCount(null);
     setFiltersOpen(false);
@@ -163,6 +427,7 @@ export function DataGrid({
 
   function applyColumns() {
     if (picked.length === 0) return;
+    if (!confirmDiscard()) return;
     const next = picked;
     const kept = new Set(next);
     setVisible(next);
@@ -208,11 +473,69 @@ export function DataGrid({
         <button className="btn" type="button" onClick={openFilters} disabled={!allColumns}>
           Filters
         </button>
-        <span className="spacer" />
-            <button className="btn" type="button" disabled={visible !== null && visible.length === 0} onClick={() => void exportGrid()}>
-              Export all
+        <button
+          className="btn"
+          type="button"
+          disabled={loading}
+          onClick={() => {
+            if (!confirmDiscard()) return;
+            setCount(null);
+            setReloadCount((current) => current + 1);
+          }}
+        >
+          Reload
+        </button>
+        {canEdit && (
+          <>
+            <button
+              className="btn"
+              type="button"
+              disabled={selectedRows.length === 0 || committing}
+              title={selectedRows.length === 0 ? "Select one or more rows first" : "Mark selected rows for deletion"}
+              onClick={markDeleted}
+            >
+              Delete
             </button>
+            {deleted.size > 0 && (
+              <button className="btn" type="button" disabled={!selectedHasDeleted || committing} onClick={restoreDeleted}>
+                Restore
+              </button>
+            )}
+            <button className="btn btn-primary" type="button" disabled={!hasPending || committing} onClick={() => void commit()}>
+              {committing ? "Committing…" : "Commit"}
+            </button>
+            {hasPending && (
+              <button className="btn" type="button" disabled={committing} onClick={clearPending}>
+                Discard
+              </button>
+            )}
+            {hasPending && (
+              <span className="meta row-pending">
+                {dirtyCount} edited · {deleted.size} to delete
+              </span>
+            )}
+            {selectedRows.length > 0 && <span className="meta">{selectedRows.length} selected</span>}
+          </>
+        )}
+        {!readOnly && page && page.identityColumns.length === 0 && <span className="meta">No primary key · rows cannot be edited</span>}
+        {readOnly && <span className="meta">Read-only</span>}
+        <span className="spacer" />
+        <button className="btn" type="button" disabled={visible !== null && visible.length === 0} onClick={() => void exportGrid()}>
+          Export all
+        </button>
       </div>
+      {commitError && (
+        <div className="row-error" role="alert">
+          <span>{commitError}</span>
+          {commitDetails.length > 0 && (
+            <ul>
+              {commitDetails.slice(0, 8).map((detail) => (
+                <li key={detail}>{detail}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {filters.length > 0 && (
         <div className="chips" aria-label="Applied filters">
           {filters.map((filter, index) => (
@@ -222,6 +545,7 @@ export function DataGrid({
                 type="button"
                 aria-label={`Remove filter ${filterSQL(filter)}`}
                 onClick={() => {
+                  if (!confirmDiscard()) return;
                   setFilters(filters.filter((_, item) => item !== index));
                   setOffset(0);
                   setCount(null);
@@ -237,18 +561,29 @@ export function DataGrid({
       {page && page.columns.length > 0 && (
         <SelectableTable
           columns={page.columns}
-          rows={page.rows}
+          rows={rowValues}
           clearRows={clearRows}
           filename={`${target.relation}-rows.csv`}
           onRowScope={onRowScope}
           sort={sort}
           onHeaderClick={(name) => {
+            if (!confirmDiscard()) return;
             setSort((current) => {
               if (!current || current.column !== name) return { column: name, dir: "asc" };
               if (current.dir === "asc") return { column: name, dir: "desc" };
               return null;
             });
           }}
+          editable={canEdit && !committing}
+          rowKeys={rowKeys}
+          edits={edits}
+          errors={cellErrors}
+          deleted={deleted}
+          columnKinds={columnKinds}
+          columnZones={columnZones}
+          columnNullable={columnNullable}
+          onEdit={setDraft}
+          onSelectionChange={handleSelection}
         />
       )}
       <details className="statement">
@@ -263,6 +598,7 @@ export function DataGrid({
             aria-label="Page size"
             value={pageSize}
             onChange={(e) => {
+              if (!confirmDiscard()) return;
               setPageSize(Number(e.target.value));
               setOffset(0);
             }}
@@ -289,10 +625,26 @@ export function DataGrid({
         {count !== null && <span className="meta">Count: {count}</span>}
         <span className="spacer" />
         <span className="meta">{start && end ? `${start}–${end}` : "0 rows"}</span>
-        <button className="btn" type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - pageSize))}>
+        <button
+          className="btn"
+          type="button"
+          disabled={offset === 0}
+          onClick={() => {
+            if (!confirmDiscard()) return;
+            setOffset(Math.max(0, offset - pageSize));
+          }}
+        >
           Previous
         </button>
-        <button className="btn" type="button" disabled={!page || page.rows.length < pageSize} onClick={() => setOffset(offset + pageSize)}>
+        <button
+          className="btn"
+          type="button"
+          disabled={!page || rowValues.length < pageSize}
+          onClick={() => {
+            if (!confirmDiscard()) return;
+            setOffset(offset + pageSize);
+          }}
+        >
           Next
         </button>
       </div>
@@ -334,16 +686,7 @@ export function DataGrid({
               >
                 Add filter
               </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => {
-                  setFilters([]);
-                  setOffset(0);
-                  setCount(null);
-                  setFiltersOpen(false);
-                }}
-              >
+              <button className="btn" type="button" onClick={clearFilters}>
                 Clear
               </button>
               <span className="spacer" />
@@ -395,6 +738,7 @@ export function DataGrid({
           </div>
         </div>
       )}
+      {toast && <div className="toast" role="status">{toast}</div>}
     </div>
   );
 }

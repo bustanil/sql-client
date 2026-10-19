@@ -14,11 +14,13 @@ The product spec is [docs/PRODUCT.md](docs/PRODUCT.md). The process split and HT
 - Browse databases, schemas, tables, views, columns, indexes, and foreign keys. The sidebar width is draggable. A cut-off name shows in full on hover.
 - Create and drop a database or table from a form that shows the SQL before it runs. Create an index or foreign key by confirming the generated statement.
 - Open a table or view. Filter with several conditions combined with AND, sort one column, hide columns, and page through rows. A hidden column can still be filtered.
-- Select rows. Click another cell in the same row to move the cell highlight. Double-click the highlighted cell to copy its value.
+- Select rows. Click another cell in the same row to move the cell highlight. Double-click a cell in a table to edit it, or double-click a cell in a query result to copy its value.
+- Edit several cells in a row, then **Commit** them together. Date, time, and timestamp cells have a separate picker button; the cell text can still be typed directly. Dirty cells stay visible until commit.
+- Mark one or more rows for deletion, then commit updates and deletes together. Rows waiting for deletion use a different highlight, and **Restore** removes the mark. A failed commit keeps every dirty edit and reports the invalid cells.
 - Export the filtered grid, the selected rows, or the rows already returned by a query, as CSV. The first line is the column names.
 - Run SQL in its own session. The editor colors SQL, formats it, cancels a running statement, and suggests tables and columns.
 
-A read-only connection hides create and drop, and rejects a statement that does not look like a read before it is sent.
+A read-only connection hides create, drop, row editing, and row deletion, and rejects a statement that does not look like a read before it is sent. A table or view with no primary key opens read-only because a row cannot be identified safely.
 
 ## Requirements
 
@@ -44,7 +46,7 @@ npm run dev
 npm run pack
 ```
 
-This writes an unsigned app to `release/mac-arm64/SQL Client.app`.
+This writes an unsigned app to `release/mac-arm64/SQL Client.app`. The bundle icon is `build/icon.icns`, generated from `design/app-icons/icon-01-database-row.svg`.
 
 ```bash
 npm run pack:dmg
@@ -61,7 +63,7 @@ go test ./...
 npm --prefix web run build
 ```
 
-The Go tests cover the catalog SQL, filters, DDL text, and the local HTTP API. They do not open a real PostgreSQL or MySQL server.
+The Go tests cover the catalog SQL, filters, row identities and value validation, DDL text, and the local HTTP API. They do not open a real PostgreSQL or MySQL server.
 
 ## Where data lives
 

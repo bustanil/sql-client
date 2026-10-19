@@ -36,9 +36,9 @@ During UI work, run Vite and `go run` directly. Electron is required for the win
 | Password storage | Electron keychain, keyed by connection id |
 | Connection file | Go. No password field |
 | Live database sessions | Go |
-| Identifier quoting, catalog SQL, DDL SQL | Go |
+| Identifier quoting, catalog SQL, DDL SQL, row-change SQL | Go |
 | Read-only rejection, statement timeout, cancel | Go |
-| Explorer, grids, forms, tabs | React |
+| Explorer, grids, forms, tabs, dirty-edit state | React |
 | SQL highlight and Format | React (CodeMirror) |
 | Query history text | Go, last 100 entries per connection. No result rows |
 
@@ -73,6 +73,8 @@ The keychain item for a connection is deleted with the connection.
 ## API
 
 Base URL is `http://127.0.0.1:<port>`. Every path below also requires the bearer secret. Bodies are JSON.
+
+The renderer and the Go process have different origins in development (Vite on `127.0.0.1:5173`) and in the packaged app (a file URL). The handler answers CORS preflight without the token and sends `Access-Control-Allow-Origin: *` on every response. The bearer secret still guards every real request.
 
 Errors are `{ "error": "<server or app message>" }` with a 4xx or 5xx status. Database errors keep the server's text.
 
@@ -124,6 +126,7 @@ Column objects are `{ "name", "type", "nullable", "default", "primaryKey" }`.
 | --- | --- | --- |
 | POST | `/sessions/{id}/browse` | One page of a table or view |
 | POST | `/sessions/{id}/browse/count` | `COUNT(*)` with the same filters and no sort |
+| POST | `/sessions/{id}/rows/commit` | Apply row updates and deletes in one transaction |
 
 Browse body:
 
@@ -141,11 +144,56 @@ Browse body:
 }
 ```
 
-`schema` is omitted for MySQL. Filter ops are `eq`, `neq`, `contains`, `gt`, `lt`, `empty`, `notempty`. Values are bound as parameters. The response includes `sql` for the read-only statement panel, with placeholders, plus `columns`, `rows`, and `window` (`{ "start", "end" }`). `rows` use `null` for SQL NULL.
+`schema` is omitted for MySQL. Filter ops are `eq`, `neq`, `contains`, `gt`, `lt`, `empty`, `notempty`. Values are bound as parameters. The response includes `sql` for the read-only statement panel, with placeholders, plus:
+
+| Field | Contents |
+| --- | --- |
+| `columns` | Visible column names |
+| `columnInfo` | `{ name, type, nullable, default, primaryKey }` for each visible column, in `columns` order |
+| `rows` | Typed row values, with `null` for SQL NULL |
+| `display` | Exact cell text, aligned with `columns` and `rows`; `null` for SQL NULL. The grid displays and edits this text so a `bigint` larger than the JavaScript safe integer keeps every digit |
+| `window` | `{ "start", "end" }` |
+| `identityColumns` | Primary-key column names. Empty when the relation has no primary key |
+| `identity` | One array per row, aligned with `identityColumns`, holding strings or `null` |
+
+The key columns are queried and returned even when the grid hides them, so the row can be updated or deleted without showing the key. Identity values are strings so a `bigint` larger than the JavaScript safe integer keeps its exact value. A relation without a primary key returns no identity columns and the grid stays read-only.
 
 `limit` is 50, 100, or 500.
 
 `POST /sessions/{id}/export` takes the same body as browse and streams CSV for the filtered rows, visible columns, and sort. It stops at 100,000 data rows. Query-result export uses the rows already returned and does not call this route.
+
+### Row changes
+
+Commit body:
+
+```json
+{
+  "database": "app_dev",
+  "schema": "public",
+  "relation": "users",
+  "updates": [
+    {
+      "row": 0,
+      "identity": { "id": "42" },
+      "changes": { "email": "ada@example.com", "deleted_at": null }
+    }
+  ],
+  "deletes": [{ "row": 3, "identity": { "id": "7" } }]
+}
+```
+
+`row` is the renderer's index for the row. The server echoes it in field errors so the grid can keep the dirty edit and mark the right cell. `identity` carries every primary-key column from the browse response. An update or delete without a complete key is rejected. `changes` uses `null` for SQL NULL and strings for every other value; PostgreSQL and MySQL parse the string against the target column.
+
+Before the first statement runs, the server reloads column metadata and validates each change:
+
+- The relation must have a primary key.
+- The column must exist.
+- A `NOT NULL` column cannot receive `null`.
+- Integer, number, boolean, date, time, timestamp, and JSON columns must parse as that family.
+
+A validation failure returns 422 with `{ "error", "errors": [{ "kind", "row", "column", "message" }] }`. The transaction rolls back and the renderer keeps every dirty edit and delete mark. A database error during execution rolls back the whole batch and uses the same shape when a row is known. A delete that affects no row is an error. Success is `{ "updated": 2, "deleted": 1 }`.
+
+A read-only session returns 403. Statements and parameters use the same quoting and placeholder rules as browse; identifiers are quoted and values are bound.
 
 ### DDL
 

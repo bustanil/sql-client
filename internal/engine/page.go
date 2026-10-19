@@ -8,10 +8,14 @@ import (
 )
 
 type Page struct {
-	SQL     string   `json:"sql"`
-	Columns []string `json:"columns"`
-	Rows    [][]Cell `json:"rows"`
-	Window  Window   `json:"window"`
+	SQL             string      `json:"sql"`
+	Columns         []string    `json:"columns"`
+	ColumnInfo      []Column    `json:"columnInfo"`
+	IdentityColumns []string    `json:"identityColumns"`
+	Identity        [][]*string `json:"identity"`
+	Rows            [][]Cell    `json:"rows"`
+	Display         [][]*string `json:"display"`
+	Window          Window      `json:"window"`
 }
 
 type Window struct {
@@ -49,9 +53,18 @@ func PageQuery(ctx context.Context, db *sql.DB, req PageRequest) (Page, error) {
 	if req.Offset < 0 {
 		req.Offset = 0
 	}
-	names, err := relationColumns(ctx, db, req)
+	loaded, err := Columns(ctx, db, req.Engine, schemaOf(req), req.Relation)
 	if err != nil {
 		return Page{}, err
+	}
+	if len(loaded) == 0 {
+		return Page{}, fmt.Errorf("the relation has no columns")
+	}
+	names := make([]string, 0, len(loaded))
+	info := make(map[string]Column, len(loaded))
+	for _, col := range loaded {
+		names = append(names, col.Name)
+		info[col.Name] = col
 	}
 	cols := req.Columns
 	if len(cols) == 0 {
@@ -62,8 +75,20 @@ func PageQuery(ctx context.Context, db *sql.DB, req PageRequest) (Page, error) {
 			return Page{}, fmt.Errorf("unknown column %s", name)
 		}
 	}
-	quoted := make([]string, len(cols))
-	for i, name := range cols {
+
+	// The primary key values travel with every row so the UI can identify a row
+	// even when the key columns are hidden. They are never added to the visible
+	// columns.
+	keyColumns := primaryKeyColumns(loaded)
+	queryCols := append([]string{}, cols...)
+	for _, name := range keyColumns {
+		if !contains(queryCols, name) {
+			queryCols = append(queryCols, name)
+		}
+	}
+
+	quoted := make([]string, len(queryCols))
+	for i, name := range queryCols {
 		quoted[i] = Quote(req.Engine, name)
 	}
 	statement, args, err := buildSelect(req, quoted, names)
@@ -75,15 +100,80 @@ func PageQuery(ctx context.Context, db *sql.DB, req PageRequest) (Page, error) {
 		return Page{}, err
 	}
 	defer rows.Close()
-	scanned, _, err := scanCells(rows, len(cols), 0)
+	scanned, _, err := scanCells(rows, len(queryCols), 0)
 	if err != nil {
 		return Page{}, err
 	}
+
+	visibleInfo := make([]Column, len(cols))
+	for i, name := range cols {
+		visibleInfo[i] = info[name]
+	}
+	displayRows := make([][]Cell, len(scanned))
+	identity := make([][]*string, len(scanned))
+	for i, row := range scanned {
+		displayRows[i] = row[:len(cols)]
+		key := make([]*string, len(keyColumns))
+		for j, name := range keyColumns {
+			key[j] = cellText(row[indexOf(queryCols, name)])
+		}
+		identity[i] = key
+	}
+
 	start := 0
 	if len(scanned) > 0 {
 		start = req.Offset + 1
 	}
-	return Page{SQL: statement, Columns: cols, Rows: scanned, Window: Window{Start: start, End: req.Offset + len(scanned)}}, nil
+	return Page{
+		SQL: statement, Columns: cols, ColumnInfo: visibleInfo,
+		IdentityColumns: keyColumns, Identity: identity, Rows: displayRows,
+		Display: textRows(scanned, len(cols)),
+		Window:  Window{Start: start, End: req.Offset + len(scanned)},
+	}, nil
+}
+
+func primaryKeyColumns(cols []Column) []string {
+	out := []string{}
+	for _, col := range cols {
+		if col.PrimaryKey {
+			out = append(out, col.Name)
+		}
+	}
+	return out
+}
+
+func indexOf(list []string, name string) int {
+	for i, item := range list {
+		if item == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// cellText returns nil for SQL NULL and a string for every other value. The
+// string keeps large numbers and timestamps exact while the UI holds them in a
+// text editor.
+func cellText(cell Cell) *string {
+	if cell.Null() {
+		return nil
+	}
+	text := cell.Text()
+	return &text
+}
+
+// textRows mirrors the first width cells of every scanned row as exact text.
+// The renderer edits this text, so a bigint above the JavaScript safe integer
+// never goes through a JSON number and never loses digits.
+func textRows(rows [][]Cell, width int) [][]*string {
+	out := make([][]*string, len(rows))
+	for i, row := range rows {
+		out[i] = make([]*string, width)
+		for j := 0; j < width; j++ {
+			out[i][j] = cellText(row[j])
+		}
+	}
+	return out
 }
 
 func schemaOf(req PageRequest) string {

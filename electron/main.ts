@@ -33,7 +33,7 @@ function startGo(): Promise<AppConfig> {
   const bin = process.env.SQLC_BIN || (app.isPackaged ? path.join(process.resourcesPath, "sql-client-server") : "");
   const cmd = bin || "go";
   const args = bin ? [] : ["run", "./cmd/server"];
-  const cwd = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..");
+  const cwd = app.isPackaged ? process.resourcesPath : path.join(__dirname, "..", "..");
   goProc = spawn(cmd, args, {
     cwd,
     env: {
@@ -87,6 +87,10 @@ function placeOnCursorDisplay(win: BrowserWindow): void {
 app.setName("SQL Client");
 
 app.whenReady().then(async () => {
+  if (!app.isPackaged && process.platform === "darwin") {
+    const devIcon = path.join(__dirname, "..", "..", "build", "icon.png");
+    if (fs.existsSync(devIcon)) app.dock?.setIcon(devIcon);
+  }
   try {
     const config = await startGo();
     ipcMain.handle("config", () => config);
@@ -135,6 +139,7 @@ app.whenReady().then(async () => {
     win.moveTop();
     app.focus({ steal: true });
   } catch (err) {
+    console.error("[sql-client] could not start", err);
     dialog.showErrorBox("SQL Client could not start", err instanceof Error ? err.message : String(err));
     app.quit();
   }

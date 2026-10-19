@@ -47,6 +47,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("GET /sessions/{id}/complete", s.complete)
 	s.mux.HandleFunc("POST /sessions/{id}/browse", s.browse)
 	s.mux.HandleFunc("POST /sessions/{id}/browse/count", s.browseCount)
+	s.mux.HandleFunc("POST /sessions/{id}/rows/commit", s.commitRows)
 	s.mux.HandleFunc("POST /sessions/{id}/export", s.exportCSV)
 	s.mux.HandleFunc("POST /sessions/{id}/spawn", s.spawnSession)
 	s.mux.HandleFunc("POST /sessions/{id}/queries", s.runQuery)
@@ -58,6 +59,17 @@ func (s *Server) routes() {
 
 func (s *Server) Handler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The renderer is loaded from Vite in development and from a file in the
+		// packaged app, so every API call is cross-origin. The bearer token still
+		// guards the data; CORS only lets the app read the response.
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Max-Age", "600")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if !s.authorized(r) {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return

@@ -46,12 +46,14 @@ export function QueryEditor({
   connectionId,
   clearRows,
   onRowScope,
+  active = true,
 }: {
   config: ClientConfig;
   sessionId: string;
   connectionId?: string;
   clearRows: number;
   onRowScope?: (scope: RowScope | null) => void;
+  active?: boolean;
 }) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
@@ -63,6 +65,9 @@ export function QueryEditor({
   const [timeoutSec, setTimeoutSec] = useState(30);
   const [running, setRunning] = useState(false);
   const [history, setHistory] = useState<Array<{ sql: string; ok: boolean; error?: string }>>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   useEffect(() => {
     if (!host.current) return;
@@ -92,6 +97,10 @@ export function QueryEditor({
       editor?.destroy();
     };
   }, [config, sessionId]);
+
+  useEffect(() => {
+    if (active) view.current?.requestMeasure();
+  }, [active]);
 
   async function run() {
     const sqlText = view.current?.state.doc.toString() || "";
@@ -148,11 +157,24 @@ export function QueryEditor({
   }
 
   async function showHistory() {
-    if (!connectionId) return;
-    const res = await fetch(`${config.origin}/connections/${connectionId}/history`, {
-      headers: { Authorization: `Bearer ${config.token}` },
-    });
-    setHistory(await res.json());
+    if (historyOpen) {
+      setHistoryOpen(false);
+      return;
+    }
+    setHistoryOpen(true);
+    setHistoryError("");
+    if (!connectionId) {
+      setHistoryError("History is unavailable. Open a new query tab or reconnect, then try again.");
+      return;
+    }
+    setHistoryLoading(true);
+    try {
+      setHistory(await api<Array<{ sql: string; ok: boolean; error?: string }>>(config, `/connections/${connectionId}/history`));
+    } catch (err) {
+      setHistoryError(err instanceof Error ? err.message : "Could not load history");
+    } finally {
+      setHistoryLoading(false);
+    }
   }
 
   function format() {
@@ -164,7 +186,7 @@ export function QueryEditor({
 
   function loadHistory(sqlText: string) {
     view.current?.dispatch({ changes: { from: 0, to: view.current.state.doc.length, insert: sqlText } });
-    setHistory([]);
+    setHistoryOpen(false);
   }
 
   return (
@@ -179,7 +201,7 @@ export function QueryEditor({
         <button className="btn" type="button" disabled={!running} onClick={() => void cancel()}>
           Cancel
         </button>
-        <button className="btn" type="button" onClick={() => void showHistory()}>
+        <button className="btn" type="button" aria-expanded={historyOpen} aria-controls={`history-${sessionId}`} onClick={() => void showHistory()}>
           History
         </button>
         <button
@@ -191,9 +213,12 @@ export function QueryEditor({
           Export CSV
         </button>
       </div>
-      {history.length > 0 && (
-        <div className="history">
-          {history.map((item, index) => (
+      {historyOpen && (
+        <div className="history" id={`history-${sessionId}`} role="region" aria-label="Query history" aria-busy={historyLoading}>
+          {historyLoading ? <p className="empty" role="status">Loading history…</p>
+            : historyError ? <p className="error-box" role="alert">{historyError}</p>
+            : history.length === 0 ? <p className="empty">No queries have been run on this connection yet.</p>
+            : history.map((item, index) => (
             <button key={index} type="button" onClick={() => loadHistory(item.sql)}>
               {item.ok ? "ok" : item.error} · {item.sql}
             </button>
@@ -215,7 +240,7 @@ export function QueryEditor({
               rows={result.rows || []}
               clearRows={clearRows}
               filename="query-rows.csv"
-              onRowScope={onRowScope}
+              onRowScope={active ? onRowScope : undefined}
             />
           )}
         </>

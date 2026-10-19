@@ -41,6 +41,26 @@ func TestFiltersAreCombinedWithAnd(t *testing.T) {
 	}
 }
 
+func TestTextRowsKeepsExactNumbers(t *testing.T) {
+	rows := [][]Cell{make([]Cell, 3), make([]Cell, 3)}
+	_ = rows[0][0].Scan(int64(9007199254740993))
+	_ = rows[0][1].Scan("ada")
+	_ = rows[0][2].Scan(true)
+	_ = rows[1][0].Scan(nil)
+	_ = rows[1][1].Scan(1.5)
+	_ = rows[1][2].Scan([]byte("bytes"))
+	text := textRows(rows, 3)
+	if len(text) != 2 || len(text[0]) != 3 {
+		t.Fatalf("shape %#v", text)
+	}
+	if *text[0][0] != "9007199254740993" || *text[0][1] != "ada" || *text[0][2] != "true" {
+		t.Fatalf("row 0 %#v", text[0])
+	}
+	if text[1][0] != nil || *text[1][1] != "1.5" || *text[1][2] != "bytes" {
+		t.Fatalf("row 1 %#v", text[1])
+	}
+}
+
 func TestFilterAllowsHiddenColumn(t *testing.T) {
 	sqlText, _, err := buildSelect(PageRequest{
 		Engine: "PostgreSQL", Schema: "public", Relation: "users",

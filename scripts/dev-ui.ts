@@ -6,7 +6,6 @@ const env = {
   ...process.env,
   SQLC_TOKEN: token,
   SQLC_ADDR: addr,
-  VITE_API_ORIGIN: `http://${addr}`,
   VITE_API_TOKEN: token,
 };
 
